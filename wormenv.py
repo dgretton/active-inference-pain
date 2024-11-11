@@ -6,6 +6,16 @@ import pymdp
 from pymdp import utils
 from pymdp.agent import Agent
 
+class WormState:
+    def __init__(self):
+        self.movement = np.array([0, 0])
+        self.warn = False
+        self.noci = False
+    
+    def reset(self):
+        self.warn = False
+        self.noci = False
+
 # Initialize Pygame
 pygame.init()
 
@@ -22,6 +32,7 @@ GREEN = (0, 255, 0)
 YELLOW = (255, 255, 0)
 BLACK = (0, 0, 0)
 LIGHTGRAY = (200, 200, 200)
+ORANGE = (255, 165, 0)
 
 # Fonts
 font = pygame.font.Font(None, 30)
@@ -39,9 +50,8 @@ worm_vels = np.zeros((worm_length, 2))
 
 # Regions
 regions = [
-    {"rect": pygame.Rect(50, 50, 100, 100), "color": BLUE, "effect": "slow"},
-    {"rect": pygame.Rect(200, 200, 150, 150), "color": GREEN, "effect": "fast"},
-    {"rect": pygame.Rect(200, 400, 120, 120), "color": YELLOW, "effect": "random"}
+    {"rect": pygame.Rect(0, 475, SIM_WIDTH, 50), "color": ORANGE, "effect": "warning"},
+    {"rect": pygame.Rect(0, 550, SIM_WIDTH, 100), "color": RED, "effect": "nociception"},
 ]
 
 # Configuration panel
@@ -52,10 +62,11 @@ config_surface = pygame.Surface((CONFIG_WIDTH, HEIGHT))
 clock = pygame.time.Clock()
 FPS = 60
 
-def update_worm_state(worm_pos, action):
+def update_worm_state(worm_state, worm_pos, action):
     speed = 5
 
     #initialize to difference between previous position and current position
+    movement = worm_state.movement
     movement = (worm_pos[-1] - worm_poss[-2])
     movement /= np.linalg.norm(movement)
     movement += np.random.uniform(-1, 1, 2)*.1
@@ -69,6 +80,7 @@ def update_worm_state(worm_pos, action):
     movement /= np.linalg.norm(movement)
     movement *= speed
 
+    worm_state.reset()
     if action != 1:
         # Apply region effects
         for region in regions:
@@ -79,8 +91,14 @@ def update_worm_state(worm_pos, action):
                     movement *= 2
                 elif region["effect"] == "random":
                     movement += np.random.uniform(-10, 10, 2)
+                elif region["effect"] == "warning":
+                    worm_state.warn = True
+                elif region["effect"] == "nociception":
+                    worm_state.noci = True
+                    print("Nociception detected!")
 
     new_pos = worm_pos + movement
+    worm_state.movement = movement
 
     desired_radius = worm_radius
     ideal_poss = [worm_poss[0]]
@@ -124,20 +142,26 @@ def draw_config_panel(surface):
 
 def main():
     global worm_pos
+    worm_state = WormState()
 
     # Initialize the agent
-    num_obs = 2       # Observation modality dimensions
+    num_obs_noci = 2       # Observation modality noci dimensions
+    num_obs_warn = 2       # Observation modality warning dimensions
     num_states = 2    # Hidden state factor dimensions
     num_controls = 2  # Control state factor dimensions
 
-    # Define the A matrix (likelihood)
-    A_array = utils.obj_array_zeros([(num_obs, num_states)])
+    # Define the A matrix (likelihood) maps observations to hidden states
+    A_array = utils.obj_array_zeros([(num_obs_noci, num_states), (num_obs_warn, num_states)])
     # A[observation][hidden_state]
     # Observation 0: 'nociception', Observation 1: 'no-nociception'
+    # Observation 1: 'warning', Observation 2: 'no-warning'
     # Hidden State 0: 'safe', Hidden State 1: 'harmful'
 
-    A_array[0][:, 0] = [0.0, 1.0]  # 'safe' state
-    A_array[0][:, 1] = [1.0, 0.0]  # 'harmful' state
+    A_array[0][:, 0] = [0.0, 1.0]  # no noci -> 'safe' state
+    A_array[0][:, 1] = [1.0, 0.0]  # noci -> 'harmful' state
+
+    A_array[1][:, 0] = [000.5, 0.5]  # no warning -> 'safe' state
+    A_array[1][:, 1] = [0.5, 000.5]  # warning -> 'harmful' state
 
     # Define the B matrix (transitions)
     B_array = utils.obj_array_zeros([(num_states, num_states, num_controls)])
@@ -150,9 +174,11 @@ def main():
                            [0, 0]]
 
     # Define the C vector (preferences)
-    C_vector = utils.obj_array_zeros([(num_obs,)])
+    C_vector = utils.obj_array_zeros([(num_obs_noci,), (num_obs_warn,)])
     # Preference for 'no-nociception' over 'nociception'
     C_vector[0] = np.array([0.0, 1.0])
+    # Preference for 'no-warning' over 'warning'
+    C_vector[1] = np.array([0.5, 0.5])
 
     # Initialize the agent
     my_agent = Agent(A=A_array, B=B_array, C=C_vector)
@@ -170,11 +196,20 @@ def main():
         sim_surface.fill(WHITE)
         config_surface.fill(WHITE)
 
-        # Determine observation based on worm's position
-        if worm_pos[1] > SIM_HEIGHT - 100:
-            observation = [0]  # 'nociception'
+        # Determine observations based on worm's position
+        if worm_state.noci: # whether we were in the nociceptive zone in the PREVIOUS time step
+        #if worm_pos[1] > 550:
+            noci_observation = 0 # 'nociception'
         else:
-            observation = [1]  # 'no-nociception'
+            noci_observation = 1  # 'no-nociception'
+
+        if worm_state.warn: # whether we were in the warning zone in the PREVIOUS time step
+            warn_observation = 1 # 'warning'
+        else:
+            warn_observation = 0 # 'no-warning'
+
+        observation = (noci_observation, warn_observation) 
+        print(f"Observation: {observation}")
 
         # Update agent's belief over hidden states
         qs = my_agent.infer_states(observation)
@@ -184,7 +219,7 @@ def main():
         action = my_agent.sample_action()[0]  # action is a list of length 1
 
         # Update worm state based on action
-        worm_pos = update_worm_state(worm_pos, action)
+        worm_pos = update_worm_state(worm_state, worm_pos, action)
 
         # Draw regions
         draw_regions(sim_surface)
