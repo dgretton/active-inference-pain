@@ -232,14 +232,15 @@ def main():
         action = my_agent.sample_action()[0]  # action is a list of length 1 (there is only one control factor, retreat/stay)
 
         # Very slowly and explicitly update the A matrix based on the current belief over hidden states using small words and no scary maths
+        learning_rate = 0.001
         safe_state_value = qs[0][0]
         harmful_state_value = qs[0][1]
         one_hot_noci_vector_for_this_iteration = np.array([1.0, 0.0]).T if noci_observation == 0 else np.array([0.0, 1.0]).T
         one_hot_warn_vector_for_this_iteration = np.array([1.0, 0.0]).T if warn_observation == 0 else np.array([0.0, 1.0]).T
-        my_agent.A[0][0, :] += one_hot_noci_vector_for_this_iteration * safe_state_value
-        my_agent.A[0][1, :] += one_hot_noci_vector_for_this_iteration * harmful_state_value
-        my_agent.A[1][0, :] += one_hot_warn_vector_for_this_iteration * safe_state_value
-        my_agent.A[1][1, :] += one_hot_warn_vector_for_this_iteration * harmful_state_value
+        # my_agent.A[0][0, :] += one_hot_noci_vector_for_this_iteration * safe_state_value
+        # my_agent.A[0][1, :] += one_hot_noci_vector_for_this_iteration * harmful_state_value
+        my_agent.A[1][0, :] += one_hot_warn_vector_for_this_iteration * safe_state_value * learning_rate
+        my_agent.A[1][1, :] += one_hot_warn_vector_for_this_iteration * harmful_state_value * learning_rate
         print(qs)
         print(my_agent.A)
 
