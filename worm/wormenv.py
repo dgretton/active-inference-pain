@@ -51,7 +51,7 @@ worm_vels = np.zeros((worm_length, 2))
 
 # Regions
 regions = [
-    {"rect": pygame.Rect(0, 275, SIM_WIDTH, 200), "color": ORANGE, "effect": "warning"},
+    {"rect": pygame.Rect(0, 485, SIM_WIDTH, 30), "color": ORANGE, "effect": "warning"},
     {"rect": pygame.Rect(0, 550, SIM_WIDTH, 50), "color": RED, "effect": "nociception"},
 ]
 
@@ -227,6 +227,10 @@ def main():
         # Update agent's belief over hidden states
         qs = my_agent.infer_states(observation)
 
+        # Infer policies and sample action
+        q_pi, efe = my_agent.infer_policies()
+        action = my_agent.sample_action()[0]  # action is a list of length 1 (there is only one control factor, retreat/stay)
+
         # Very slowly and explicitly update the A matrix based on the current belief over hidden states using small words and no scary maths
         safe_state_value = qs[0][0]
         harmful_state_value = qs[0][1]
@@ -236,11 +240,8 @@ def main():
         my_agent.A[0][1, :] += one_hot_noci_vector_for_this_iteration * harmful_state_value
         my_agent.A[1][0, :] += one_hot_warn_vector_for_this_iteration * safe_state_value
         my_agent.A[1][1, :] += one_hot_warn_vector_for_this_iteration * harmful_state_value
+        print(qs)
         print(my_agent.A)
-
-        # Infer policies and sample action
-        q_pi, efe = my_agent.infer_policies()
-        action = my_agent.sample_action()[0]  # action is a list of length 1 (there is only one control factor, retreat/stay)
 
         # Update worm state based on action
         worm_pos = update_worm_state(worm_state, worm_pos, action)
