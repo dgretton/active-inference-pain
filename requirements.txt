@@ -1,4 +1,0 @@
-pygame
-numpy
-inferactively-pymdp
-

@@ -5,6 +5,7 @@ import numpy as np
 import pymdp
 from pymdp import utils
 from pymdp.agent import Agent
+from pymdp.maths import softmax
 
 class WormState:
     def __init__(self):
@@ -161,8 +162,8 @@ def main():
     A_array[0][:, 0] = [0.0, 1.0]  # no noci -> 'safe' state
     A_array[0][:, 1] = [1.0, 0.0]  # noci -> 'harmful' state
 
-    A_array[1][:, 0] = [0.0, 1.0]  # no warning -> 'safe' state
-    A_array[1][:, 1] = [1.0, 0.0]  # warning -> 'harmful' state
+    A_array[1][:, 0] = [0.5, 0.5]  # no warning -> 'safe' state
+    A_array[1][:, 1] = [0.5, 0.5]  # warning -> 'harmful' state
 
     # Define the B matrix (transitions)
     B_array = utils.obj_array_zeros([(num_states, num_states, num_controls)])
@@ -226,9 +227,20 @@ def main():
         # Update agent's belief over hidden states
         qs = my_agent.infer_states(observation)
 
+        # Very slowly and explicitly update the A matrix based on the current belief over hidden states using small words and no scary maths
+        safe_state_value = qs[0][0]
+        harmful_state_value = qs[0][1]
+        one_hot_noci_vector_for_this_iteration = np.array([1.0, 0.0]).T if noci_observation == 0 else np.array([0.0, 1.0]).T
+        one_hot_warn_vector_for_this_iteration = np.array([1.0, 0.0]).T if warn_observation == 0 else np.array([0.0, 1.0]).T
+        my_agent.A[0][0, :] += one_hot_noci_vector_for_this_iteration * safe_state_value
+        my_agent.A[0][1, :] += one_hot_noci_vector_for_this_iteration * harmful_state_value
+        my_agent.A[1][0, :] += one_hot_warn_vector_for_this_iteration * safe_state_value
+        my_agent.A[1][1, :] += one_hot_warn_vector_for_this_iteration * harmful_state_value
+        print(my_agent.A)
+
         # Infer policies and sample action
         q_pi, efe = my_agent.infer_policies()
-        action = my_agent.sample_action()[0]  # action is a list of length 1
+        action = my_agent.sample_action()[0]  # action is a list of length 1 (there is only one control factor, retreat/stay)
 
         # Update worm state based on action
         worm_pos = update_worm_state(worm_state, worm_pos, action)
