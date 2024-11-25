@@ -45,7 +45,7 @@ sim_surface = pygame.Surface((SIM_WIDTH, SIM_HEIGHT))
 worm_pos = np.array([SIM_WIDTH // 2, 0], dtype=float) # bottom center
 worm_radius = 6
 worm_length = 40
-worm_poss = [worm_pos.copy() for _ in range(worm_length)]
+worm_poss = [worm_pos.copy() for _ in range(worm_length)] #worm positions
 worm_vels = np.zeros((worm_length, 2))
 
 # Regions
@@ -85,7 +85,7 @@ def update_worm_state(worm_state, worm_pos, action):
         # Apply region effects
         for region in regions:
             if region["rect"].collidepoint(worm_pos):
-                if region["effect"] == "slow":
+                if region["effect"] == "slow": #should remove these soon
                     movement *= 0.5
                 elif region["effect"] == "fast":
                     movement *= 2
@@ -140,6 +140,7 @@ def draw_config_panel(surface):
     
     # Add more configuration options here
 
+
 def main():
     global worm_pos
     worm_state = WormState()
@@ -190,6 +191,9 @@ def main():
     qs = utils.obj_array_uniform([(num_states,)])  # Uniform prior
 
     running = True
+
+
+
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
