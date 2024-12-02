@@ -236,7 +236,7 @@ def main():
         safe_state_value = qs[0][0]
         harmful_state_value = qs[0][1]
         one_hot_noci_vector_for_this_iteration = np.array([1.0, 0.0]) if noci_observation == 0 else np.array([0.0, 1.0])
-        one_hot_warn_vector_for_this_iteration = np.array([1.0, 0.001]) if warn_observation == 0 else np.array([0.001, 1.0])
+        one_hot_warn_vector_for_this_iteration = np.array([1.0, 0.001]) if warn_observation == 0 else np.array([0.001, 1.0]) # .001 is just to see which row/column is getting modified by adding ~zero
         # my_agent.A[0][0, :] += one_hot_noci_vector_for_this_iteration * safe_state_value
         # my_agent.A[0][1, :] += one_hot_noci_vector_for_this_iteration * harmful_state_value
         my_agent.A[1][:, 0] += one_hot_warn_vector_for_this_iteration * safe_state_value * learning_rate
