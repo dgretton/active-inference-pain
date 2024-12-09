@@ -14,15 +14,19 @@ class SimulationConfig:
     sim_height: float = 600.0
     worm_radius: float = 6.0
     worm_length: int = 40
-    warn_reset_prob: float = 0.01
+    warn_reset_prob: float = 0.05
     speed: float = 2.0
-    learning_rate: float = 0.01
+    learning_rate: float = 1.0
     
     # Region definitions
     warning_height: float = 485.0
-    warning_thickness: float = 145.0
+    warning_thickness: float = 100.0
     noci_height: float = 550.0
     noci_thickness: float = 50.0
+    # warning_height: float = 550.0  # Change from 485.0
+    # warning_thickness: float = 50.0  # Change from 145.0
+    # noci_height: float = 550.0  # Already correct
+    # noci_thickness: float = 50.0  # Already correct
 
 @dataclass
 class WormState:
@@ -61,16 +65,17 @@ class ActiveInferenceAgent:
             (self.num_obs_noci, self.num_states),
             (self.num_obs_warn, self.num_states)
         ])
-        self.A_array[0][:, 0] = [0.0, 1.0]
-        self.A_array[0][:, 1] = [1.0, 0.0]
-        self.A_array[1][:, 0] = [0.5, 0.5]
-        self.A_array[1][:, 1] = [0.5, 0.5]
+        self.A_array[0][:, 0] = [0.0, 1.0]   # no noci -> 'safe' state
+        self.A_array[0][:, 1] = [.9, 0.1]    # noci -> 'harmful' state
+        self.A_array[1][:, 0] = [0.5, 0.5]   # no warning -> 'safe' state
+        self.A_array[1][:, 1] = [0.5, 0.5]   # warning -> 'harmful' state
 
         self.B_array = utils.obj_array_zeros([
             (self.num_states, self.num_states, self.num_controls)
         ])
-        self.B_array[0][:, :, 0] = np.eye(2)
-        self.B_array[0][:, :, 1] = [[1, 1], [0, 0]]
+        self.B_array[0][:, :, 0] = np.eye(2) # "stay" action: if safe, stay safe; if harmful, stay harmful
+        self.B_array[0][:, :, 1] = [[1, .8], # "retreat" action: if safe, stay safe. If harmful, probably become safe
+                                    [0, .2]]
 
         self.C_vector = utils.obj_array_zeros([
             (self.num_obs_noci,),
@@ -99,11 +104,14 @@ class ActiveInferenceAgent:
         safe_state_value = self.qs[0][0]
         harmful_state_value = self.qs[0][1]
         
-        one_hot_warn_vector = np.array([1.0, 0.001]) if warn_observation == 0 else np.array([0.001, 1.0])
+        one_hot_warn_vector = np.array([.001, 1.0]) if warn_observation == 1 else np.array([1.0, .001])
         
         self.agent.A[1][:, 0] += one_hot_warn_vector * safe_state_value * learning_rate
         self.agent.A[1][:, 1] += one_hot_warn_vector * harmful_state_value * learning_rate
         print("A matrix:", self.agent.A)
+        print ("if safe, p(warn) = ", self.agent.A[1][0][0], "if danger, p(warn) = ", self.agent.A[1][1][0])
+
+        print(f"qs: {self.qs}, observation: {observation}, action: {action}")
 
         return action, self.qs
 
@@ -122,22 +130,14 @@ class WormSimulation:
         movement /= np.linalg.norm(movement) if np.linalg.norm(movement) > 0 else 1
         movement += np.random.uniform(-1, 1, 2) * 0.1
 
-        if action == 1:
-            movement += np.array([0, -2])
-        else:
-            movement += np.array([0, 0.01])
+        if action == 1:  # 'retreat' action
+            # Move toward the top of the screen
+            movement += np.array([0, -.05])  # up direction
+        else:  # action == 0, 'stay'
+            movement += np.array([0, .05]) # bias downward
 
         movement /= np.linalg.norm(movement) if np.linalg.norm(movement) > 0 else 1
         movement *= self.config.speed
-
-        # Check region collisions
-        self.state.noci = False
-        if action != 1:
-            y = self.state.position[1]
-            if self.config.warning_height <= y <= (self.config.warning_height + self.config.warning_thickness):
-                self.state.warn = True
-            elif self.config.noci_height <= y <= (self.config.noci_height + self.config.noci_thickness):
-                self.state.noci = True
 
         # Update position
         new_pos = self.state.position + movement
@@ -173,9 +173,19 @@ class WormSimulation:
         positions.append(new_pos)
         self.state.position = new_pos
 
+        # In update_physics, right before the region checks:
+        print(f"y position: {self.state.position[1]}, noci threshold: {self.config.noci_height}")
+        # Check region collisions
+        self.state.noci = False
+        y = self.state.position[1]
+        if self.config.warning_height <= y <= (self.config.warning_height + self.config.warning_thickness):
+            self.state.warn = True
+        if self.config.noci_height <= y <= (self.config.noci_height + self.config.noci_thickness):
+            self.state.noci = True
+
     def get_observations(self) -> Tuple[int, int]:
         """Get current observations from worm state"""
-        warn_observation = 1 if self.state.warn else 0
+        warn_observation = 0 if self.state.warn else 1
         noci_observation = 0 if self.state.noci else 1
         return (noci_observation, warn_observation)
 
@@ -284,23 +294,31 @@ class WormVisualizer:
 
         # Draw indicators
         warning_indicator = self.font.render(
-            f"Warning: {'ON' if state.warn else 'OFF'}", 
+            f"Warning: {'ON' if state.warn else 'OFF'}",
             True, self.RED
         )
         self.sim_surface.blit(warning_indicator, (10, 10))
-        
+
+        # Draw noci indicator
+        noci_indicator = self.font.render(
+            f"Nociception: {'ON' if state.noci else 'OFF'}", 
+            True, self.RED
+        )
+        self.sim_surface.blit(noci_indicator, (10, 40))
+
+        # Draw action indicator
         action_indicator = self.font.render(
             f"Action: {'Retreat' if action == 1 else 'Stay'}", 
             True, self.GREEN
         )
-        self.sim_surface.blit(action_indicator, (10, 40))
+        self.sim_surface.blit(action_indicator, (10, 70))
         
         # Draw belief state
         belief_indicator = self.font.render(
             f"Safe belief: {qs[0][0]:.2f}", 
             True, self.BLUE
         )
-        self.sim_surface.blit(belief_indicator, (10, 70))
+        self.sim_surface.blit(belief_indicator, (10, 100))
 
         # Draw regions
         self.draw_regions()
