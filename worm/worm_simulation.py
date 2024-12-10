@@ -2,10 +2,9 @@
 import numpy as np
 from multiprocessing import Pool
 from dataclasses import dataclass
-from typing import List, Tuple, Optional
-import pymdp
-from pymdp import utils
-from pymdp.agent import Agent
+from typing import List, Tuple
+# from worm_simulation_dynamic_perception_and_policy_selection_chatgpt import ActiveInferenceAgent
+from agent_worm import ActiveInferenceWormAgent, SimpleHomeostaticAgent
 
 @dataclass
 class SimulationConfig:
@@ -14,13 +13,13 @@ class SimulationConfig:
     sim_height: float = 600.0
     worm_radius: float = 6.0
     worm_length: int = 40
-    warn_reset_prob: float = 0.05
+    warn_reset_prob: float = 0.01
     speed: float = 2.0
-    learning_rate: float = 1.0
-
+    learning_rate: float = .05
+    
     # Region definitions
-    warning_height: float = 485.0
-    warning_thickness: float = 100.0
+    warning_height: float = 525.0
+    warning_thickness: float = 25.0
     noci_height: float = 550.0
     noci_thickness: float = 50.0
     # warning_height: float = 550.0  # Change from 485.0
@@ -29,7 +28,7 @@ class SimulationConfig:
     # noci_thickness: float = 50.0  # Already correct
 
 @dataclass
-class WormState:
+class WormPhysState:
     """Physical state of the worm"""
     position: np.ndarray  # Current head position
     positions: List[np.ndarray]  # List of segment positions
@@ -50,83 +49,20 @@ class WormState:
             noci=False
         )
 
-class ActiveInferenceAgent:
-    """Agent implementing active inference for worm control"""
 
-    def __init__(self):
-        # Define model dimensions
-        self.num_obs_noci = 2
-        self.num_obs_warn = 2
-        self.num_states = 2
-        self.num_controls = 2
-
-        # Initialize matrices
-        self.A_array = utils.obj_array_zeros([
-            (self.num_obs_noci, self.num_states),
-            (self.num_obs_warn, self.num_states)
-        ])
-        self.A_array[0][:, 0] = [0.0, 1.0]   # no noci -> 'safe' state
-        self.A_array[0][:, 1] = [.9, 0.1]    # noci -> 'harmful' state
-        self.A_array[1][:, 0] = [0.5, 0.5]   # no warning -> 'safe' state
-        self.A_array[1][:, 1] = [0.5, 0.5]   # warning -> 'harmful' state
-
-        self.B_array = utils.obj_array_zeros([
-            (self.num_states, self.num_states, self.num_controls)
-        ])
-        self.B_array[0][:, :, 0] = np.eye(2) # "stay" action: if safe, stay safe; if harmful, stay harmful
-        self.B_array[0][:, :, 1] = [[1, .8], # "retreat" action: if safe, stay safe. If harmful, probably become safe
-                                    [0, .2]]
-
-        self.C_vector = utils.obj_array_zeros([
-            (self.num_obs_noci,),
-            (self.num_obs_warn,)
-        ])
-        self.C_vector[0] = np.array([0.0, 1.0])
-        self.C_vector[1] = np.array([0.5, 0.5])
-
-        self.E_matrix = np.array([0.8, 0.2])
-
-        # Initialize agent and beliefs
-        self.agent = Agent(A=self.A_array, B=self.B_array, C=self.C_vector, E=self.E_matrix)
-        self.qs = utils.obj_array_uniform([(self.num_states,)])
-
-    def update(self, observation: Tuple[int, int], learning_rate: float) -> Tuple[int, np.ndarray]:
-        """Update agent beliefs and get action"""
-        # Update beliefs
-        self.qs = self.agent.infer_states(observation)
-
-        # Get action
-        q_pi, efe = self.agent.infer_policies()
-        action = self.agent.sample_action()[0]
-
-        # Update A matrix
-        noci_observation, warn_observation = observation
-        safe_state_value = self.qs[0][0]
-        harmful_state_value = self.qs[0][1]
-
-        one_hot_warn_vector = np.array([.001, 1.0]) if warn_observation == 1 else np.array([1.0, .001])
-
-        self.agent.A[1][:, 0] += one_hot_warn_vector * safe_state_value * learning_rate
-        self.agent.A[1][:, 1] += one_hot_warn_vector * harmful_state_value * learning_rate
-        print("A matrix:", self.agent.A)
-        print ("if safe, p(warn) = ", self.agent.A[1][0][0], "if danger, p(warn) = ", self.agent.A[1][1][0])
-
-        print(f"qs: {self.qs}, observation: {observation}, action: {action}")
-
-        return action, self.qs
 
 class WormSimulation:
     """Main simulation class"""
-
-    def __init__(self, config: SimulationConfig):
+    
+    def __init__(self, config: SimulationConfig, agent_type:ActiveInferenceWormAgent):
         self.config = config
-        self.state = WormState.initialize(config)
-        self.agent = ActiveInferenceAgent()
+        self.phys_state = WormPhysState.initialize(config)
+        self.agent = agent_type()
 
     def update_physics(self, action: int) -> None:
         """Update worm physics"""
         # Update movement vector
-        movement = self.state.movement
+        movement = self.phys_state.movement
         movement /= np.linalg.norm(movement) if np.linalg.norm(movement) > 0 else 1
         movement += np.random.uniform(-1, 1, 2) * 0.1
 
@@ -140,17 +76,17 @@ class WormSimulation:
         movement *= self.config.speed
 
         # Update position
-        new_pos = self.state.position + movement
-        self.state.movement = movement
-
+        new_pos = self.phys_state.position + movement
+        self.phys_state.movement = movement
+        
         # Reset warning with probability
         if np.random.rand() < self.config.warn_reset_prob:
-            self.state.warn = False
+            self.phys_state.warn = False
 
         # Update segment positions
-        positions = self.state.positions
+        positions = self.phys_state.positions
         ideal_positions = [positions[0]]
-
+        
         for i in range(1, len(positions) - 2):
             diff = positions[i] - positions[i-1] + np.array([0, 1e-6])
             diff += (positions[i] - positions[0]) * 0.01
@@ -159,60 +95,58 @@ class WormSimulation:
             ideal_positions.append(
                 ideal_positions[-1] + diff/np.linalg.norm(diff) * self.config.worm_radius
             )
-
+        
         for i in range(len(positions) - 2):
             positions[i] += (ideal_positions[i] - positions[i]) * 0.03
 
         # Enforce boundaries
-        new_pos[0] = np.clip(new_pos[0], self.config.worm_radius,
+        new_pos[0] = np.clip(new_pos[0], self.config.worm_radius, 
                             self.config.sim_width - self.config.worm_radius)
-        new_pos[1] = np.clip(new_pos[1], self.config.worm_radius,
+        new_pos[1] = np.clip(new_pos[1], self.config.worm_radius, 
                             self.config.sim_height - self.config.worm_radius)
 
         positions.pop(0)
         positions.append(new_pos)
-        self.state.position = new_pos
+        self.phys_state.position = new_pos
 
-        # In update_physics, right before the region checks:
-        print(f"y position: {self.state.position[1]}, noci threshold: {self.config.noci_height}")
         # Check region collisions
-        self.state.noci = False
-        y = self.state.position[1]
+        self.phys_state.noci = False
+        y = self.phys_state.position[1]
         if self.config.warning_height <= y <= (self.config.warning_height + self.config.warning_thickness):
-            self.state.warn = True
+            self.phys_state.warn = True
         if self.config.noci_height <= y <= (self.config.noci_height + self.config.noci_thickness):
-            self.state.noci = True
+            self.phys_state.noci = True
 
     def get_observations(self) -> Tuple[int, int]:
         """Get current observations from worm state"""
-        warn_observation = 0 if self.state.warn else 1
-        noci_observation = 0 if self.state.noci else 1
+        warn_observation = 0 if self.phys_state.warn else 1
+        noci_observation = 0 if self.phys_state.noci else 1
         return (noci_observation, warn_observation)
 
-    def step(self) -> Tuple[WormState, np.ndarray, int]:
+    def step(self) -> Tuple[WormPhysState, np.ndarray, int]:
         """Perform one simulation step"""
         observation = self.get_observations()
-        action, qs = self.agent.update(observation, self.config.learning_rate)
+        action, qs = self.agent.infer(observation)
         self.update_physics(action)
-        return self.state, qs, action
+        return self.phys_state, qs, action
 
-def run_simulation(config: SimulationConfig, num_steps: int) -> List[Tuple[WormState, np.ndarray, int]]:
+def run_simulation(config: SimulationConfig, num_steps: int) -> List[Tuple[WormPhysState, np.ndarray, int]]:
     """Run a single simulation for specified number of steps"""
-    sim = WormSimulation(config)
+    sim = WormSimulation(config, agent_type=SimpleHomeostaticAgent)
     history = []
-
+    
     for _ in range(num_steps):
-        state, qs, action = sim.step()
-        history.append((state, qs, action))
-
+        phys_state, qs, action = sim.step()
+        history.append((phys_state, qs, action))
+        
     return history
 
-def run_parallel_simulations(configs: List[SimulationConfig],
-                           num_steps: int,
-                           num_processes: int = None) -> List[List[Tuple[WormState, np.ndarray, int]]]:
+def run_parallel_simulations(configs: List[SimulationConfig], 
+                           num_steps: int, 
+                           num_processes: int = None) -> List[List[Tuple[WormPhysState, np.ndarray, int]]]:
     """Run multiple simulations in parallel"""
     with Pool(processes=num_processes) as pool:
-        results = pool.starmap(run_simulation,
+        results = pool.starmap(run_simulation, 
                              [(config, num_steps) for config in configs])
     return results
 
@@ -222,13 +156,13 @@ class WormVisualizer:
         import pygame
         self.pygame = pygame
         self.pygame.init()
-
+        
         # Display setup
         self.width = width
         self.height = height
         self.sim_width = int(config.sim_width)
         self.sim_height = int(config.sim_height)
-
+        
         # Colors
         self.WHITE = (255, 255, 255)
         self.RED = (255, 0, 0)
@@ -247,7 +181,7 @@ class WormVisualizer:
         self.font = pygame.font.Font(None, 30)
         self.clock = pygame.time.Clock()
         self.fps = 60
-
+        
         # Store config for drawing regions
         self.config = config
 
@@ -255,9 +189,9 @@ class WormVisualizer:
         """Draw warning and nociception regions"""
         # Warning region
         warning_rect = self.pygame.Rect(
-            0,
+            0, 
             self.config.warning_height,
-            self.sim_width,
+            self.sim_width, 
             self.config.warning_thickness
         )
         self.pygame.draw.rect(self.sim_surface, self.ORANGE, warning_rect, 2)
@@ -266,7 +200,7 @@ class WormVisualizer:
             warning_rect.centerx - warning_text.get_width() // 2,
             warning_rect.centery - warning_text.get_height() // 2
         ))
-
+        
         # Nociception region
         noci_rect = self.pygame.Rect(
             0,
@@ -281,7 +215,7 @@ class WormVisualizer:
             noci_rect.centery - noci_text.get_height() // 2
         ))
 
-    def draw_frame(self, state: WormState, qs: np.ndarray, action: int) -> bool:
+    def draw_frame(self, state: WormPhysState, qs: np.ndarray, action: int) -> bool:
         """Draw a single frame. Returns False if window closed."""
         # Handle pygame events
         for event in self.pygame.event.get():
@@ -301,21 +235,21 @@ class WormVisualizer:
 
         # Draw noci indicator
         noci_indicator = self.font.render(
-            f"Nociception: {'ON' if state.noci else 'OFF'}",
+            f"Nociception: {'ON' if state.noci else 'OFF'}", 
             True, self.RED
         )
         self.sim_surface.blit(noci_indicator, (10, 40))
 
         # Draw action indicator
         action_indicator = self.font.render(
-            f"Action: {'Retreat' if action == 1 else 'Stay'}",
+            f"Action: {'Retreat' if action == 1 else 'Stay'}", 
             True, self.GREEN
         )
         self.sim_surface.blit(action_indicator, (10, 70))
-
+        
         # Draw belief state
         belief_indicator = self.font.render(
-            f"Safe belief: {qs[0][0]:.2f}",
+            f"Safe belief: {qs[0][0]:.2f}", 
             True, self.BLUE
         )
         self.sim_surface.blit(belief_indicator, (10, 100))
@@ -325,9 +259,9 @@ class WormVisualizer:
 
         # Draw worm
         self.pygame.draw.circle(
-            self.sim_surface,
-            self.RED,
-            state.position.astype(int),
+            self.sim_surface, 
+            self.RED, 
+            state.position.astype(int), 
             int(self.config.worm_radius)
         )
         for pos in state.positions:
@@ -343,7 +277,7 @@ class WormVisualizer:
         self.screen.blit(self.config_surface, (self.sim_width, 0))
         self.pygame.display.flip()
         self.clock.tick(self.fps)
-
+        
         return True
 
     def cleanup(self):
@@ -352,26 +286,28 @@ class WormVisualizer:
 
 def run_visual_simulation(config: SimulationConfig, num_steps: int = None):
     """Run a single simulation with visualization"""
-    sim = WormSimulation(config)
+    sim = WormSimulation(config, agent_type=SimpleHomeostaticAgent)
     vis = WormVisualizer(config)
-
+    
     running = True
     step = 0
-
+    history = []
+    
     try:
         while running and (num_steps is None or step < num_steps):
-            state, qs, action = sim.step()
-            running = vis.draw_frame(state, qs, action)
+            phys_state, qs, action = sim.step()
+            history.append((phys_state, qs, action))
+            running = vis.draw_frame(phys_state, qs, action)
             step += 1
     finally:
         vis.cleanup()
-
-    return step
+    
+    return history
 
 if __name__ == "__main__":
     # Example usage showing both visual and parallel capabilities
     import sys
-
+    
     if len(sys.argv) > 1 and sys.argv[1] == "--parallel":
         # Run parallel simulation experiment
         configs = [SimulationConfig() for _ in range(4)]
@@ -384,4 +320,7 @@ if __name__ == "__main__":
     else:
         # Run visual simulation
         config = SimulationConfig()
-        run_visual_simulation(config)
+        while True:
+            history = run_visual_simulation(config, num_steps=1000)
+            # Learning
+            # self.agent.learn(history, self.config.learning_rate)
