@@ -48,9 +48,7 @@ The agent implements active inference with:
    - Warning/nociception zone properties
 
 ## Usage
-The simulation can be run in two modes:
-
-### Visual Mode
+To run the simulation, after installing the relevant dependancies:
 ```python3 worm_simulation.py```
 
 
