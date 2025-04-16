@@ -3,6 +3,7 @@ import numpy as np
 from multiprocessing import Pool
 from dataclasses import dataclass
 from typing import List, Tuple
+from pymdp import utils
 # from worm_simulation_dynamic_perception_and_policy_selection_chatgpt import ActiveInferenceAgent
 from agent_worm import ActiveInferenceWormAgent, SimpleHomeostaticAgent
 
@@ -13,13 +14,13 @@ class SimulationConfig:
     sim_height: float = 600.0
     worm_radius: float = 6.0
     worm_length: int = 40
-    warn_reset_prob: float = 0.01
+    warn_reset_prob: float = 1.0
     speed: float = 2.0
     learning_rate: float = .05
     
     # Region definitions
     warning_height: float = 525.0
-    warning_thickness: float = 25.0
+    warning_thickness: float = 75.0
     noci_height: float = 550.0
     noci_thickness: float = 50.0
     # warning_height: float = 550.0  # Change from 485.0
@@ -54,10 +55,11 @@ class WormPhysState:
 class WormSimulation:
     """Main simulation class"""
     
-    def __init__(self, config: SimulationConfig, agent_type:ActiveInferenceWormAgent):
+    def __init__(self, config: SimulationConfig, agent_type:ActiveInferenceWormAgent, A_matrix=None):
         self.config = config
         self.phys_state = WormPhysState.initialize(config)
-        self.agent = agent_type()
+        self.A_matrix = A_matrix
+        self.agent = agent_type(self.A_matrix)
 
     def update_physics(self, action: int) -> None:
         """Update worm physics"""
@@ -284,9 +286,9 @@ class WormVisualizer:
         """Clean up pygame resources"""
         self.pygame.quit()
 
-def run_visual_simulation(config: SimulationConfig, num_steps: int = None):
+def run_visual_simulation(config: SimulationConfig, A_matrix, num_steps: int = None):
     """Run a single simulation with visualization"""
-    sim = WormSimulation(config, agent_type=SimpleHomeostaticAgent)
+    sim = WormSimulation(config, agent_type=SimpleHomeostaticAgent, A_matrix=A_matrix)
     vis = WormVisualizer(config)
     
     running = True
@@ -304,10 +306,35 @@ def run_visual_simulation(config: SimulationConfig, num_steps: int = None):
     
     return history
 
+def update_A_from_history(history, A, learning_rate=1):
+    for phys_state, qs, action in history:
+            
+            # Update A matrix - now only need to update one matrix
+            safe_state_value = qs[0][0]
+            harmful_state_value = qs[0][1]
+            
+            # Create one-hot vector for the observation
+            update_vector = np.zeros(4) #num joint observations
+            warn, noci = phys_state.warn, phys_state.noci
+            joint_observation = 0 if (warn, noci) == (False, False) else 1 if (warn, noci) == (False, True) else 2 if (warn, noci) == (True, False) else 3
+            update_vector[joint_observation] = 1.0
+            # update_vector += np.array([.5, .5, 0, 0]) if noci_observation == 0 else np.array([0, 0, .5, .5])
+            # update_vector += np.array([.5, 0, .5, 0]) if warn_observation == 0 else np.array([0, .5, 0, .5])
+            
+            # Update A matrix for both states
+            A[0][:, 0] += update_vector * safe_state_value * learning_rate
+            A[0][:, 1] += update_vector * harmful_state_value * learning_rate
+    # Normalize A matrix columns to maintain proper probabilities
+    A[0][:, 0] = A[0][:, 0] / np.sum(A[0][:, 0])
+    A[0][:, 1] = A[0][:, 1] / np.sum(A[0][:, 1])
+    return A
+
 if __name__ == "__main__":
     # Example usage showing both visual and parallel capabilities
     import sys
     
+
+
     if len(sys.argv) > 1 and sys.argv[1] == "--parallel":
         # Run parallel simulation experiment
         configs = [SimulationConfig() for _ in range(4)]
@@ -320,7 +347,25 @@ if __name__ == "__main__":
     else:
         # Run visual simulation
         config = SimulationConfig()
+
+        A_array = utils.obj_array_zeros([
+            (4, 2) # num joint observations, num states
+        ])
+        
+        A_array[0][:, 0] = [0.0,  # low prob of warning & noci
+                                0.0,   # low prob of no warning & noci
+                                0.5,   # high prob of warning & no noci
+                                0.5]   # high prob of no warning & no noci
+
+        # In harmful state (1):
+        A_array[0][:, 1] = [0.25,  # high prob of warning & noci
+                                0.25,   # high prob of no warning & noci
+                                0.25,   # zero prob of warning & no noci
+                                0.25]   # zero prob of no warning & no noci
+
+
         while True:
-            history = run_visual_simulation(config, num_steps=1000)
+            history = run_visual_simulation(config, A_array, num_steps=1000)
             # Learning
-            # self.agent.learn(history, self.config.learning_rate)
+            A_array = update_A_from_history(history, A_array)
+            print(f"Updated A matrix:\n{A_array[0]}")
