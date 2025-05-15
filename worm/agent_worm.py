@@ -11,7 +11,7 @@ class SimpleHomeostaticAgent(ActiveInferenceWormAgent):
     
     def __init__(self, A_matrix=None):
         # Define model dimensions
-        self.num_obs_joint = 4  # (warn,noci)/(no-warn,noci)/(warn,no-noci)/(no-warn,no-noci)
+        self.num_obs_joint = 4  # (weird_smell,noci)/(no-weird-smell,noci)/(weird_smell,no-noci)/(no-weird-smell,no-noci)
         self.num_states = 2     # safe/harmful
         self.num_controls = 2   # stay/retreat
         self.A_matrix = A_matrix
@@ -26,24 +26,24 @@ class SimpleHomeostaticAgent(ActiveInferenceWormAgent):
         
             # A[observation, state]
             # States: 0=safe, 1=harmful
-            # Observations: (warning,nociception)
-            # 0 = (0,0) = no-warn,no-noci
-            # 1 = (0,1) = no-warn,noci
-            # 2 = (1,0) = warn,no-noci
-            # 3 = (1,1) = warn,noci
+            # Observations: (weird_smell,nociception)
+            # 0 = (0,0) = no-weird-smell,no-noci
+            # 1 = (0,1) = no-weird-smell,noci
+            # 2 = (1,0) = weird_smell,no-noci
+            # 3 = (1,1) = weird_smell,noci
 
             # Initialize with reasonable priors:
             # In safe state (0):
-            self.A_array[0][:, 0] = [0.0,  # low prob of warning & noci
-                                    0.0,   # low prob of no warning & noci
-                                    0.5,   # high prob of warning & no noci
-                                    0.5]   # high prob of no warning & no noci
+            self.A_array[0][:, 0] = [0.0,  # low prob of weird_smell & noci
+                                    0.0,   # low prob of no weird_smell & noci
+                                    0.5,   # high prob of weird_smell & no noci
+                                    0.5]   # high prob of no weird_smell & no noci
 
             # In harmful state (1):
-            self.A_array[0][:, 1] = [0.25,  # high prob of warning & noci
-                                    0.25,   # high prob of no warning & noci
-                                    0.25,   # zero prob of warning & no noci
-                                    0.25]   # zero prob of no warning & no noci
+            self.A_array[0][:, 1] = [0.25,  # high prob of weird_smell & noci
+                                    0.25,   # high prob of no weird_smell & noci
+                                    0.25,   # zero prob of weird_smell & no noci
+                                    0.25]   # zero prob of no weird_smell & no noci
 
         # Keep same B matrix structure
         self.B_array = utils.obj_array_zeros([
@@ -55,10 +55,13 @@ class SimpleHomeostaticAgent(ActiveInferenceWormAgent):
 
         # Preferences over joint observations
         self.C_vector = utils.obj_array_zeros([
-            (self.num_obs_joint,)
+            (self.num_obs_joint,),
+            (self.num_states,)
         ])
-        # Prefer no nociception and warning does not matter
-        self.C_vector[0] = np.array([0.0, 0.0, 0.5, 0.5])
+        # Prefer no pain and neither nociception nor weird_smell technically matter, 
+        # though in practice there is a strong preference induced for no nociception
+        self.C_vector[0] = np.array([0.5, 0.5, 0.5, 0.5])  # No preferences
+        self.C_vector[1] = np.array([1.0, 0])  # Prefer safe state
 
         # Keep same action preferences
         self.E_matrix = np.array([0.8, 0.2])  # prefer staying to retreating
@@ -70,20 +73,24 @@ class SimpleHomeostaticAgent(ActiveInferenceWormAgent):
     def infer(self, observation: Tuple[int, int]) -> Tuple[int, np.ndarray]:
         """Update agent beliefs and get action"""
 
-        noci_observation, warn_observation = observation # REMEMBER: 0 = warning/noci, 1 = no warning/noci
-        if (noci_observation, warn_observation) == (0, 0):  #  noci, warning
+        noci_observation, weird_smell_observation = observation # REMEMBER: 0 = weird_smell/noci, 1 = no weird_smell/noci
+        if (noci_observation, weird_smell_observation) == (0, 0):  #  noci, weird_smell
             joint_observation = 0
-        elif (noci_observation, warn_observation) == (0, 1): # noci, no warning
+        elif (noci_observation, weird_smell_observation) == (0, 1): # noci, no weird_smell
             joint_observation = 1
-        elif (noci_observation, warn_observation) == (1, 0): # no noci, warning
+        elif (noci_observation, weird_smell_observation) == (1, 0): # no noci, weird_smell
             joint_observation = 2
-        elif (noci_observation, warn_observation) == (1, 1): # no noci, no warning
+        elif (noci_observation, weird_smell_observation) == (1, 1): # no noci, no weird_smell
             joint_observation = 3
         else:
             raise ValueError("Invalid observation")
 
+        # sample pain observation directly from the agent's state
+        # Sample pain observation based on the probability of being in safe state
+        pain_observation = np.random.choice([0, 1], p=[self.qs[0][0], self.qs[0][1]])  # sample joint observation based on the probability of being in safe state
+
         # Update beliefs
-        self.qs = self.agent.infer_states([joint_observation])
+        self.qs = self.agent.infer_states([joint_observation, pain_observation])
 
         # Get action
         q_pi, efe = self.agent.infer_policies()
@@ -109,11 +116,11 @@ class SimpleLearningAgent(SimpleHomeostaticAgent):
             
             # Create one-hot vector for the observation
             update_vector = np.zeros(self.num_obs_joint)
-            warn, noci = phys_state.warn, phys_state.noci
-            joint_observation = 0 if (warn, noci) == (False, False) else 1 if (warn, noci) == (False, True) else 2 if (warn, noci) == (True, False) else 3
+            weird_smell, noci = phys_state.weird_smell, phys_state.noci
+            joint_observation = 0 if (weird_smell, noci) == (False, False) else 1 if (weird_smell, noci) == (False, True) else 2 if (weird_smell, noci) == (True, False) else 3
             update_vector[joint_observation] = 1.0
             # update_vector += np.array([.5, .5, 0, 0]) if noci_observation == 0 else np.array([0, 0, .5, .5])
-            # update_vector += np.array([.5, 0, .5, 0]) if warn_observation == 0 else np.array([0, .5, 0, .5])
+            # update_vector += np.array([.5, 0, .5, 0]) if weird_smell_observation == 0 else np.array([0, .5, 0, .5])
             
             # Update A matrix for both states
             self.agent.A[0][:, 0] += update_vector * safe_state_value * learning_rate

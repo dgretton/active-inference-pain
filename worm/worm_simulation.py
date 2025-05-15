@@ -14,17 +14,17 @@ class SimulationConfig:
     sim_height: float = 600.0
     worm_radius: float = 6.0
     worm_length: int = 40
-    warn_reset_prob: float = 1.0
+    weird_smell_reset_prob: float = 1.0
     speed: float = 2.0
     learning_rate: float = .05
     
     # Region definitions
-    warning_height: float = 525.0
-    warning_thickness: float = 75.0
+    weird_smell_height: float = 525.0
+    weird_smell_thickness: float = 75.0
     noci_height: float = 550.0
     noci_thickness: float = 50.0
-    # warning_height: float = 550.0  # Change from 485.0
-    # warning_thickness: float = 50.0  # Change from 145.0
+    # weird_smell_height: float = 550.0  # Change from 485.0
+    # weird_smell_thickness: float = 50.0  # Change from 145.0
     # noci_height: float = 550.0  # Already correct
     # noci_thickness: float = 50.0  # Already correct
 
@@ -34,7 +34,7 @@ class WormPhysState:
     position: np.ndarray  # Current head position
     positions: List[np.ndarray]  # List of segment positions
     movement: np.ndarray  # Current movement vector
-    warn: bool = False  # Warning signal state
+    weird_smell: bool = False  # Weird smell signal state
     noci: bool = False  # Nociception state
 
     @classmethod
@@ -46,7 +46,7 @@ class WormPhysState:
             position=pos,
             positions=positions,
             movement=np.zeros(2),
-            warn=False,
+            weird_smell=False,
             noci=False
         )
 
@@ -81,9 +81,9 @@ class WormSimulation:
         new_pos = self.phys_state.position + movement
         self.phys_state.movement = movement
         
-        # Reset warning with probability
-        if np.random.rand() < self.config.warn_reset_prob:
-            self.phys_state.warn = False
+        # Reset weird smell with probability
+        if np.random.rand() < self.config.weird_smell_reset_prob:
+            self.phys_state.weird_smell = False
 
         # Update segment positions
         positions = self.phys_state.positions
@@ -114,16 +114,16 @@ class WormSimulation:
         # Check region collisions
         self.phys_state.noci = False
         y = self.phys_state.position[1]
-        if self.config.warning_height <= y <= (self.config.warning_height + self.config.warning_thickness):
-            self.phys_state.warn = True
+        if self.config.weird_smell_height <= y <= (self.config.weird_smell_height + self.config.weird_smell_thickness):
+            self.phys_state.weird_smell = True
         if self.config.noci_height <= y <= (self.config.noci_height + self.config.noci_thickness):
             self.phys_state.noci = True
 
     def get_observations(self) -> Tuple[int, int]:
         """Get current observations from worm state"""
-        warn_observation = 0 if self.phys_state.warn else 1
+        weird_smell_observation = 0 if self.phys_state.weird_smell else 1
         noci_observation = 0 if self.phys_state.noci else 1
-        return (noci_observation, warn_observation)
+        return (noci_observation, weird_smell_observation)
 
     def step(self) -> Tuple[WormPhysState, np.ndarray, int]:
         """Perform one simulation step"""
@@ -188,19 +188,19 @@ class WormVisualizer:
         self.config = config
 
     def draw_regions(self):
-        """Draw warning and nociception regions"""
-        # Warning region
-        warning_rect = self.pygame.Rect(
+        """Draw weird smell and nociception regions"""
+        # Weird smell region
+        weird_smell_rect = self.pygame.Rect(
             0, 
-            self.config.warning_height,
+            self.config.weird_smell_height,
             self.sim_width, 
-            self.config.warning_thickness
+            self.config.weird_smell_thickness
         )
-        self.pygame.draw.rect(self.sim_surface, self.ORANGE, warning_rect, 2)
-        warning_text = self.font.render("warning", True, self.ORANGE)
-        self.sim_surface.blit(warning_text, (
-            warning_rect.centerx - warning_text.get_width() // 2,
-            warning_rect.centery - warning_text.get_height() // 2
+        self.pygame.draw.rect(self.sim_surface, self.ORANGE, weird_smell_rect, 2)
+        weird_smell_text = self.font.render("weird smell", True, self.ORANGE)
+        self.sim_surface.blit(weird_smell_text, (
+            weird_smell_rect.centerx - weird_smell_text.get_width() // 2,
+            weird_smell_rect.centery - weird_smell_text.get_height() // 2
         ))
         
         # Nociception region
@@ -229,11 +229,11 @@ class WormVisualizer:
         self.config_surface.fill(self.WHITE)
 
         # Draw indicators
-        warning_indicator = self.font.render(
-            f"Warning: {'ON' if state.warn else 'OFF'}",
+        weird_smell_indicator = self.font.render(
+            f"Weird smell: {'ON' if state.weird_smell else 'OFF'}",
             True, self.RED
         )
-        self.sim_surface.blit(warning_indicator, (10, 10))
+        self.sim_surface.blit(weird_smell_indicator, (10, 10))
 
         # Draw noci indicator
         noci_indicator = self.font.render(
@@ -315,11 +315,11 @@ def update_A_from_history(history, A, learning_rate=1):
             
             # Create one-hot vector for the observation
             update_vector = np.zeros(4) #num joint observations
-            warn, noci = phys_state.warn, phys_state.noci
-            joint_observation = 0 if (warn, noci) == (False, False) else 1 if (warn, noci) == (False, True) else 2 if (warn, noci) == (True, False) else 3
+            weird_smell, noci = phys_state.weird_smell, phys_state.noci
+            joint_observation = 0 if (weird_smell, noci) == (False, False) else 1 if (weird_smell, noci) == (False, True) else 2 if (weird_smell, noci) == (True, False) else 3
             update_vector[joint_observation] = 1.0
             # update_vector += np.array([.5, .5, 0, 0]) if noci_observation == 0 else np.array([0, 0, .5, .5])
-            # update_vector += np.array([.5, 0, .5, 0]) if warn_observation == 0 else np.array([0, .5, 0, .5])
+            # update_vector += np.array([.5, 0, .5, 0]) if weird_smell_observation == 0 else np.array([0, .5, 0, .5])
             
             # Update A matrix for both states
             A[0][:, 0] += update_vector * safe_state_value * learning_rate
@@ -349,19 +349,29 @@ if __name__ == "__main__":
         config = SimulationConfig()
 
         A_array = utils.obj_array_zeros([
-            (4, 2) # num joint observations, num states
+            (4, 2), # num joint observations over smell/noci, num states
+            (2, 2) # pain/no pain, num states
         ])
+
+        #the initial A matrix is just here to set the "polarity" of the safe and harmful states
+        # The A matrix will change significantly during the simulation as learning occurs,
+        # but the initial values are set to correlate pain = harmful = noci at a minimum, to break the symmetry
+        # This gives the baseline for where subsequent observations will be "sorted" into the A matrix
         
-        A_array[0][:, 0] = [0.0,  # low prob of warning & noci
-                                0.0,   # low prob of no warning & noci
-                                0.5,   # high prob of warning & no noci
-                                0.5]   # high prob of no warning & no noci
+        A_array[0][:, 0] = [0.0,  # low prob of weird smell & noci
+                                0.0,   # low prob of no weird smell & noci
+                                0.5,   # high prob of weird smell & no noci
+                                0.5]   # high prob of no weird smell & no noci
 
         # In harmful state (1):
-        A_array[0][:, 1] = [0.25,  # high prob of warning & noci
-                                0.25,   # high prob of no warning & noci
-                                0.25,   # zero prob of warning & no noci
-                                0.25]   # zero prob of no warning & no noci
+        A_array[0][:, 1] = [.5,  # high prob of weird smell & noci
+                                .5,   # high prob of no weird smell & noci
+                                0,   # zero prob of weird smell & no noci
+                                0]   # zero prob of no weird smell & no noci
+
+        # Second matrix is identity
+        A_array[1][:, 0] = [1.0, 0.0]
+        A_array[1][:, 1] = [0.0, 1.0]
 
 
         while True:
