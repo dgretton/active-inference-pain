@@ -106,7 +106,7 @@ class SimpleLearningAgent(SimpleHomeostaticAgent):
     """Agent implementing active inference for worm control using joint observations"""
     
 
-    def learn(self, history, learning_rate): #TODO: accumulate information from history and figure out how to update A matrix based on sum of episodic experience
+    def learn(self, history, learning_rate, pseudocount=0.01): #TODO: accumulate information from history and figure out how to update A matrix based on sum of episodic experience
         # history is a list of tuples [(phys_state, qs, action), ...]
         for phys_state, qs, action in history:
             
@@ -122,9 +122,9 @@ class SimpleLearningAgent(SimpleHomeostaticAgent):
             # update_vector += np.array([.5, .5, 0, 0]) if noci_observation == 0 else np.array([0, 0, .5, .5])
             # update_vector += np.array([.5, 0, .5, 0]) if weird_smell_observation == 0 else np.array([0, .5, 0, .5])
             
-            # Update A matrix for both states
-            self.agent.A[0][:, 0] += update_vector * safe_state_value * learning_rate
-            self.agent.A[0][:, 1] += update_vector * harmful_state_value * learning_rate
+            # Update A matrix for both states with pseudocounts to prevent collapse
+            self.agent.A[0][:, 0] += update_vector * safe_state_value * learning_rate + pseudocount
+            self.agent.A[0][:, 1] += update_vector * harmful_state_value * learning_rate + pseudocount
 
             # No matter what, the probability of noci in safe state should be zero
             # self.agent.A[0][0, 0] = 0.0

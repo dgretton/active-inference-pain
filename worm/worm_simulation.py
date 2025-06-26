@@ -441,7 +441,7 @@ def run_visual_simulation(config: SimulationConfig, A_matrix, num_steps: int = N
     
     return history
 
-def update_A_from_history(history, A, learning_rate=1):
+def update_A_from_history(history, A, learning_rate=1, pseudocount=0.01):
     for phys_state, qs, action in history:
             
             # Update A matrix - now only need to update one matrix
@@ -456,9 +456,9 @@ def update_A_from_history(history, A, learning_rate=1):
             # update_vector += np.array([.5, .5, 0, 0]) if noci_observation == 0 else np.array([0, 0, .5, .5])
             # update_vector += np.array([.5, 0, .5, 0]) if weird_smell_observation == 0 else np.array([0, .5, 0, .5])
             
-            # Update A matrix for both states
-            A[0][:, 0] += update_vector * safe_state_value * learning_rate
-            A[0][:, 1] += update_vector * harmful_state_value * learning_rate
+            # Update A matrix for both states with pseudocounts to prevent collapse
+            A[0][:, 0] += update_vector * safe_state_value * learning_rate + pseudocount
+            A[0][:, 1] += update_vector * harmful_state_value * learning_rate + pseudocount
     # Normalize A matrix columns to maintain proper probabilities
     A[0][:, 0] = A[0][:, 0] / np.sum(A[0][:, 0])
     A[0][:, 1] = A[0][:, 1] / np.sum(A[0][:, 1])
