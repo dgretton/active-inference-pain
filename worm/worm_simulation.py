@@ -485,7 +485,7 @@ if __name__ == "__main__":
 
         A_array = utils.obj_array_zeros([
             (4, 2), # num joint observations over smell/noci, num states
-            (2, 2) # pain/no pain, num states
+            #(2, 2) # pain/no pain, num states
         ])
 
         # The initial A matrix sets the "polarity" of safe and harmful states
@@ -506,8 +506,8 @@ if __name__ == "__main__":
                            0]     # joint_obs 3: no smell + no noci (unlikely in harmful)
 
         # Second matrix is identity
-        A_array[1][:, 0] = [1.0, 0.0]
-        A_array[1][:, 1] = [0.0, 1.0]
+        # A_array[1][:, 0] = [1.0, 0.0]
+        # A_array[1][:, 1] = [0.0, 1.0]
 
 
         while True:

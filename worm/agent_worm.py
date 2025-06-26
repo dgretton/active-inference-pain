@@ -56,12 +56,12 @@ class SimpleHomeostaticAgent(ActiveInferenceWormAgent):
         # Preferences over joint observations
         self.C_vector = utils.obj_array_zeros([
             (self.num_obs_joint,),
-            (self.num_states,)
+            #(self.num_states,)
         ])
         # Prefer no pain and neither nociception nor weird_smell technically matter, 
         # though in practice there is a strong preference induced for no nociception
         self.C_vector[0] = np.array([0.5, 0.5, 0.5, 0.5])  # No preferences
-        self.C_vector[1] = np.array([1.0, 0])  # Prefer safe state
+        #self.C_vector[1] = np.array([1.0, 0])  # Prefer safe state
 
         # Keep same action preferences
         self.E_matrix = np.array([0.8, 0.2])  # prefer staying to retreating
@@ -87,10 +87,10 @@ class SimpleHomeostaticAgent(ActiveInferenceWormAgent):
 
         # sample pain observation directly from the agent's state
         # Sample pain observation based on the probability of being in safe state
-        pain_observation = np.random.choice([0, 1], p=[self.qs[0][0], self.qs[0][1]])  # sample joint observation based on the probability of being in safe state
+        # pain_observation = np.random.choice([0, 1], p=[self.qs[0][0], self.qs[0][1]])  # sample joint observation based on the probability of being in safe state
 
         # Update beliefs
-        self.qs = self.agent.infer_states([joint_observation, pain_observation])
+        self.qs = self.agent.infer_states([joint_observation])#, pain_observation])
 
         # Get action
         q_pi, efe = self.agent.infer_policies()
