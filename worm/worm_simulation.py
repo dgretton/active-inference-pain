@@ -174,18 +174,25 @@ class WormVisualizer:
         self.BLACK = (0, 0, 0)
         self.LIGHTGRAY = (200, 200, 200)
         self.ORANGE = (255, 165, 0)
+        self.PURPLE = (128, 0, 128)
+        self.DARKGRAY = (64, 64, 64)
 
         # Pygame setup
         self.screen = pygame.display.set_mode((width, height))
         pygame.display.set_caption("Actively Enhanced Worm Simulation")
         self.sim_surface = pygame.Surface((self.sim_width, self.sim_height))
         self.config_surface = pygame.Surface((width - self.sim_width, height))
-        self.font = pygame.font.Font(None, 30)
+        self.font = pygame.font.Font(None, 24)
+        self.small_font = pygame.font.Font(None, 18)
         self.clock = pygame.time.Clock()
         self.fps = 60
         
         # Store config for drawing regions
         self.config = config
+        
+        # Tracking for visualization
+        self.observation_counts = np.zeros((4,))  # Count of each joint observation
+        self.total_observations = 0
 
     def draw_regions(self):
         """Draw weird smell and nociception regions"""
@@ -217,12 +224,121 @@ class WormVisualizer:
             noci_rect.centery - noci_text.get_height() // 2
         ))
 
-    def draw_frame(self, state: WormPhysState, qs: np.ndarray, action: int) -> bool:
+    def draw_a_matrix_panel(self, A_matrix: np.ndarray):
+        """Draw the A matrix visualization panel"""
+        panel_width = self.config_surface.get_width()
+        y_offset = 20
+        
+        # Title
+        title = self.font.render("A Matrix (Observation | State)", True, self.BLACK)
+        self.config_surface.blit(title, (10, y_offset))
+        y_offset += 40
+        
+        # Observation labels
+        obs_labels = [
+            "No smell, No noci",
+            "No smell, Noci", 
+            "Smell, No noci",
+            "Smell, Noci"
+        ]
+        
+        # State labels
+        state_labels = ["Safe", "Harmful"]
+        
+        # Draw headers
+        state_header_y = y_offset
+        for i, state_label in enumerate(state_labels):
+            x_pos = 120 + i * 120
+            header = self.small_font.render(state_label, True, self.BLACK)
+            self.config_surface.blit(header, (x_pos, state_header_y))
+        y_offset += 25
+        
+        # Draw A matrix values
+        for obs_idx, obs_label in enumerate(obs_labels):
+            # Observation label
+            obs_text = self.small_font.render(obs_label, True, self.BLACK)
+            self.config_surface.blit(obs_text, (10, y_offset))
+            
+            # Values for each state
+            for state_idx in range(2):
+                x_pos = 120 + state_idx * 120
+                value = A_matrix[obs_idx, state_idx]
+                
+                # Color code based on value
+                if value > 0.6:
+                    color = self.GREEN
+                elif value > 0.3:
+                    color = self.ORANGE
+                else:
+                    color = self.RED
+                    
+                value_text = self.small_font.render(f"{value:.3f}", True, color)
+                self.config_surface.blit(value_text, (x_pos, y_offset))
+            
+            y_offset += 20
+        
+        return y_offset + 20
+    
+    def draw_observation_counts_panel(self, y_start: int):
+        """Draw observation counts panel"""
+        y_offset = y_start
+        
+        # Title
+        title = self.font.render("Observation Counts", True, self.BLACK)
+        self.config_surface.blit(title, (10, y_offset))
+        y_offset += 30
+        
+        obs_labels = [
+            "No smell, No noci",
+            "No smell, Noci", 
+            "Smell, No noci",
+            "Smell, Noci"
+        ]
+        
+        # Draw counts and percentages
+        for i, label in enumerate(obs_labels):
+            count = int(self.observation_counts[i])
+            percentage = (self.observation_counts[i] / max(self.total_observations, 1)) * 100
+            
+            # Draw label
+            label_text = self.small_font.render(label, True, self.BLACK)
+            self.config_surface.blit(label_text, (10, y_offset))
+            
+            # Draw count and percentage
+            count_text = self.small_font.render(f"{count} ({percentage:.1f}%)", True, self.BLUE)
+            self.config_surface.blit(count_text, (200, y_offset))
+            
+            # Draw simple bar chart
+            bar_width = int((percentage / 100) * 150)
+            if bar_width > 0:
+                bar_rect = self.pygame.Rect(360, y_offset + 2, bar_width, 12)
+                self.pygame.draw.rect(self.config_surface, self.LIGHTGRAY, bar_rect)
+            
+            y_offset += 18
+        
+        # Total observations
+        y_offset += 10
+        total_text = self.font.render(f"Total: {self.total_observations}", True, self.BLACK)
+        self.config_surface.blit(total_text, (10, y_offset))
+        
+        return y_offset + 30
+
+    def update_observation_counts(self, state: WormPhysState):
+        """Update observation counts for visualization"""
+        weird_smell, noci = state.weird_smell, state.noci
+        joint_observation = 0 if (weird_smell, noci) == (False, False) else 1 if (weird_smell, noci) == (False, True) else 2 if (weird_smell, noci) == (True, False) else 3
+        self.observation_counts[joint_observation] += 1
+        self.total_observations += 1
+
+    def draw_frame(self, state: WormPhysState, qs: np.ndarray, action: int, A_matrix: np.ndarray = None) -> bool:
         """Draw a single frame. Returns False if window closed."""
         # Handle pygame events
         for event in self.pygame.event.get():
             if event.type == self.pygame.QUIT:
                 return False
+
+        # Update observation counts
+        self.update_observation_counts(state)
 
         # Clear surfaces
         self.sim_surface.fill(self.WHITE)
@@ -231,14 +347,14 @@ class WormVisualizer:
         # Draw indicators
         weird_smell_indicator = self.font.render(
             f"Weird smell: {'ON' if state.weird_smell else 'OFF'}",
-            True, self.RED
+            True, self.ORANGE if state.weird_smell else self.DARKGRAY
         )
         self.sim_surface.blit(weird_smell_indicator, (10, 10))
 
         # Draw noci indicator
         noci_indicator = self.font.render(
             f"Nociception: {'ON' if state.noci else 'OFF'}", 
-            True, self.RED
+            True, self.RED if state.noci else self.DARKGRAY
         )
         self.sim_surface.blit(noci_indicator, (10, 40))
 
@@ -274,6 +390,11 @@ class WormVisualizer:
                 int(self.config.worm_radius)
             )
 
+        # Draw analysis panels on the right
+        if A_matrix is not None:
+            y_offset = self.draw_a_matrix_panel(A_matrix)
+            self.draw_observation_counts_panel(y_offset)
+
         # Update display
         self.screen.blit(self.sim_surface, (0, 0))
         self.screen.blit(self.config_surface, (self.sim_width, 0))
@@ -299,7 +420,9 @@ def run_visual_simulation(config: SimulationConfig, A_matrix, num_steps: int = N
         while running and (num_steps is None or step < num_steps):
             phys_state, qs, action = sim.step()
             history.append((phys_state, qs, action))
-            running = vis.draw_frame(phys_state, qs, action)
+            # Pass the current A matrix to the visualizer
+            current_A_matrix = sim.agent.agent.A[0] if hasattr(sim.agent, 'agent') else A_matrix[0]
+            running = vis.draw_frame(phys_state, qs, action, current_A_matrix)
             step += 1
     finally:
         vis.cleanup()
