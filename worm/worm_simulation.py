@@ -234,12 +234,12 @@ class WormVisualizer:
         self.config_surface.blit(title, (10, y_offset))
         y_offset += 40
         
-        # Observation labels
+        # Observation labels (matching joint observation encoding)
         obs_labels = [
-            "No smell, No noci",
-            "No smell, Noci", 
-            "Smell, No noci",
-            "Smell, Noci"
+            "Smell, Noci",          # joint_observation = 0 (both stimuli present)
+            "No smell, Noci",       # joint_observation = 1 (only noci present)
+            "Smell, No noci",       # joint_observation = 2 (only smell present)
+            "No smell, No noci"     # joint_observation = 3 (neither present)
         ]
         
         # State labels
@@ -289,10 +289,10 @@ class WormVisualizer:
         y_offset += 30
         
         obs_labels = [
-            "No smell, No noci",
-            "No smell, Noci", 
-            "Smell, No noci",
-            "Smell, Noci"
+            "Smell, Noci",          # joint_observation = 0 (both stimuli present)
+            "No smell, Noci",       # joint_observation = 1 (only noci present)
+            "Smell, No noci",       # joint_observation = 2 (only smell present)
+            "No smell, No noci"     # joint_observation = 3 (neither present)
         ]
         
         # Draw counts and percentages
@@ -488,21 +488,22 @@ if __name__ == "__main__":
             (2, 2) # pain/no pain, num states
         ])
 
-        #the initial A matrix is just here to set the "polarity" of the safe and harmful states
-        # The A matrix will change significantly during the simulation as learning occurs,
-        # but the initial values are set to correlate pain = harmful = noci at a minimum, to break the symmetry
-        # This gives the baseline for where subsequent observations will be "sorted" into the A matrix
+        # The initial A matrix sets the "polarity" of safe and harmful states
+        # The A matrix will change significantly during simulation as learning occurs,
+        # but initial values correlate noci with harmful state to break symmetry
+        # This gives the baseline for where subsequent observations will be "sorted"
         
-        A_array[0][:, 0] = [0.0,  # low prob of weird smell & noci
-                                0.0,   # low prob of no weird smell & noci
-                                0.5,   # high prob of weird smell & no noci
-                                0.5]   # high prob of no weird smell & no noci
+        # Safe state (0) - noci should be impossible
+        A_array[0][:, 0] = [0.0,  # joint_obs 0: smell + noci (impossible in safe)
+                           0.0,   # joint_obs 1: no smell + noci (impossible in safe)
+                           0.5,   # joint_obs 2: smell + no noci (possible in safe)
+                           0.5]   # joint_obs 3: no smell + no noci (possible in safe)
 
-        # In harmful state (1):
-        A_array[0][:, 1] = [.5,  # high prob of weird smell & noci
-                                .5,   # high prob of no weird smell & noci
-                                0,   # zero prob of weird smell & no noci
-                                0]   # zero prob of no weird smell & no noci
+        # Harmful state (1) - noci is likely
+        A_array[0][:, 1] = [.5,   # joint_obs 0: smell + noci (likely in harmful)
+                           .5,    # joint_obs 1: no smell + noci (likely in harmful)
+                           0,     # joint_obs 2: smell + no noci (unlikely in harmful)
+                           0]     # joint_obs 3: no smell + no noci (unlikely in harmful)
 
         # Second matrix is identity
         A_array[1][:, 0] = [1.0, 0.0]

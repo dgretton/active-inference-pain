@@ -26,24 +26,24 @@ class SimpleHomeostaticAgent(ActiveInferenceWormAgent):
         
             # A[observation, state]
             # States: 0=safe, 1=harmful
-            # Observations: (weird_smell,nociception)
-            # 0 = (0,0) = no-weird-smell,no-noci
-            # 1 = (0,1) = no-weird-smell,noci
-            # 2 = (1,0) = weird_smell,no-noci
-            # 3 = (1,1) = weird_smell,noci
+            # Joint observations (encoding: 0=stimulus present, 1=stimulus absent):
+            # 0 = smell present, noci present (most dangerous)
+            # 1 = smell absent, noci present  
+            # 2 = smell present, noci absent
+            # 3 = smell absent, noci absent (safest)
 
             # Initialize with reasonable priors:
             # In safe state (0):
-            self.A_array[0][:, 0] = [0.0,  # low prob of weird_smell & noci
-                                    0.0,   # low prob of no weird_smell & noci
-                                    0.5,   # high prob of weird_smell & no noci
-                                    0.5]   # high prob of no weird_smell & no noci
+            self.A_array[0][:, 0] = [0.0,  # joint_obs 0: smell + noci (impossible in safe state)
+                                    0.0,   # joint_obs 1: no smell + noci (impossible in safe state)
+                                    0.5,   # joint_obs 2: smell + no noci (possible in safe state)
+                                    0.5]   # joint_obs 3: no smell + no noci (possible in safe state)
 
             # In harmful state (1):
-            self.A_array[0][:, 1] = [0.25,  # high prob of weird_smell & noci
-                                    0.25,   # high prob of no weird_smell & noci
-                                    0.25,   # zero prob of weird_smell & no noci
-                                    0.25]   # zero prob of no weird_smell & no noci
+            self.A_array[0][:, 1] = [0.25,  # joint_obs 0: smell + noci (likely in harmful state)
+                                    0.25,   # joint_obs 1: no smell + noci (likely in harmful state)
+                                    0.25,   # joint_obs 2: smell + no noci (possible in harmful state)
+                                    0.25]   # joint_obs 3: no smell + no noci (possible in harmful state)
 
         # Keep same B matrix structure
         self.B_array = utils.obj_array_zeros([
