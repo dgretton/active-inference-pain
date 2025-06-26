@@ -16,23 +16,23 @@ For an introduction to the Active Inference Framework (AIF), we suggest [this tu
 Our model implements a simple organism (visualized as a segmented worm) that must learn about and navigate potentially harmful regions in its environment. The simulation includes:
 
 ### Environment Features
-- Warning region: A zone that provides predictive information about approaching danger
+- Weird smell region: A zone that provides predictive information about approaching danger
 - Nociceptive region: A zone that represents actual tissue damage/pain
 - Continuous physical movement with realistic segment physics
 
 ### Agent Architecture
 The agent implements active inference with:
-- Two observation modalities:
+- Joint observation modality combining:
   - Nociception (pain) signals
-  - Warning signals
-- Two possible states:
+  - Weird smell signals
+- Two possible hidden states:
   - Safe
   - Harmful
 - Two possible actions:
   - Stay
   - Retreat
 - Learning dynamics implemented through:
-  - Updated A-matrix (likelihood mapping) for warning-danger associations
+  - Updated A-matrix (likelihood mapping) for weird smell-danger associations
   - Preference learning for pain avoidance
 
 ### Key Features
@@ -45,11 +45,20 @@ The agent implements active inference with:
    - Learning rates
    - Movement speeds
    - Environment dimensions
-   - Warning/nociception zone properties
+   - Weird smell/nociception zone properties
 
 ## Usage
-To run the simulation, after installing the relevant dependancies:
-```python3 worm_simulation.py```
+To run the simulation, after installing the relevant dependencies:
+```bash
+cd worm
+python3 worm_simulation.py
+```
+
+For parallel simulation experiments:
+```bash
+cd worm
+python3 worm_simulation.py --parallel
+```
 
 
 ## License
