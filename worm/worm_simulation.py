@@ -326,7 +326,19 @@ class WormVisualizer:
     def update_observation_counts(self, state: WormPhysState):
         """Update observation counts for visualization"""
         weird_smell, noci = state.weird_smell, state.noci
-        joint_observation = 0 if (weird_smell, noci) == (False, False) else 1 if (weird_smell, noci) == (False, True) else 2 if (weird_smell, noci) == (True, False) else 3
+        # Match the encoding used in agent: 0 = stimulus present, 1 = stimulus absent
+        noci_observation = 0 if noci else 1
+        weird_smell_observation = 0 if weird_smell else 1
+        
+        if (noci_observation, weird_smell_observation) == (0, 0):  # both present
+            joint_observation = 0
+        elif (noci_observation, weird_smell_observation) == (0, 1):  # noci present, no smell
+            joint_observation = 1
+        elif (noci_observation, weird_smell_observation) == (1, 0):  # no noci, smell present
+            joint_observation = 2
+        elif (noci_observation, weird_smell_observation) == (1, 1):  # neither present
+            joint_observation = 3
+        
         self.observation_counts[joint_observation] += 1
         self.total_observations += 1
 
