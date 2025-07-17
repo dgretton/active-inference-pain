@@ -442,16 +442,18 @@ class WormVisualizer:
                 if len(self.preference_history) > 1:
                     smell_values = [p['smell_present'] for p in self.preference_history]
                     
-                    # Normalize values for display
-                    min_val = min(smell_values)
-                    max_val = max(smell_values)
-                    val_range = max_val - min_val if max_val != min_val else 1.0
+                    # Use fixed range for better visualization
+                    display_min = -1.0  # Expected minimum smell preference
+                    display_max = 1.0   # Expected maximum smell preference
+                    display_range = display_max - display_min
                     
                     points = []
                     for i, val in enumerate(smell_values):
                         x = graph_x + (i / max(len(smell_values) - 1, 1)) * graph_width
-                        # Invert y so positive values go up
-                        normalized_val = (val - min_val) / val_range
+                        # Normalize to fixed range and invert y so positive values go up
+                        normalized_val = (val - display_min) / display_range
+                        # Clamp to [0, 1] range
+                        normalized_val = max(0.0, min(1.0, normalized_val))
                         y = graph_y + graph_height - (normalized_val * graph_height)
                         points.append((int(x), int(y)))
                     
@@ -464,12 +466,14 @@ class WormVisualizer:
                         current_point = points[-1]
                         self.pygame.draw.circle(self.config_surface, self.RED, current_point, 3)
                 
-                # Add labels
-                max_label = self.small_font.render(f"{max_val:.2f}" if len(self.preference_history) > 1 else "0.50", True, self.BLACK)
-                min_label = self.small_font.render(f"{min_val:.2f}" if len(self.preference_history) > 1 else "-0.50", True, self.BLACK)
+                # Add fixed labels for better reference
+                max_label = self.small_font.render("1.0", True, self.BLACK)
+                min_label = self.small_font.render("-1.0", True, self.BLACK)
+                zero_label = self.small_font.render("0.0", True, self.DARKGRAY)
                 
                 self.config_surface.blit(max_label, (graph_x + graph_width + 5, graph_y))
                 self.config_surface.blit(min_label, (graph_x + graph_width + 5, graph_y + graph_height - 15))
+                self.config_surface.blit(zero_label, (graph_x + graph_width + 5, graph_y + graph_height // 2 - 8))
                 
                 y_offset += graph_height + 25
         else:
