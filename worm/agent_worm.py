@@ -44,12 +44,12 @@ class AssociativeLearningWormAgent(ActiveInferenceWormAgent):
             (self.num_states, self.num_states, self.num_controls)
         ])
         
-        # Action 0: stay - natural progression toward harm
+        # Action 0: stay - more conservative transitions to encourage exploration
         # Each column must sum to 1.0 (transition probabilities from each state)
         self.B_array[0][:, :, 0] = [
-            [0.7, 0.2, 0.0],  # to safe: from safe=0.7, from warning=0.2, from harmful=0.0
-            [0.2, 0.6, 0.3],  # to warning: from safe=0.2, from warning=0.6, from harmful=0.3
-            [0.1, 0.2, 0.7]   # to harmful: from safe=0.1, from warning=0.2, from harmful=0.7
+            [0.9, 0.1, 0.0],  # to safe: from safe=0.9, from warning=0.1, from harmful=0.0
+            [0.1, 0.6, 0.2],  # to warning: from safe=0.1, from warning=0.6, from harmful=0.2
+            [0.0, 0.3, 0.8]   # to harmful: from safe=0.0, from warning=0.3, from harmful=0.8
         ]
         
         # Action 1: retreat - move toward safety
@@ -68,11 +68,11 @@ class AssociativeLearningWormAgent(ActiveInferenceWormAgent):
         # Strong preference against noci
         self.C_vector[0] = np.array([-2.0, 1.0])  # hate noci, prefer no noci
         
-        # Initially positive about smell (will learn to avoid through association)
-        self.C_vector[1] = np.array([0.5, 0.0])   # mild preference for smell initially
+        # Initially neutral about smell (will learn through association)
+        self.C_vector[1] = np.array([0.0, 0.0])   # completely neutral about smell initially
         
-        # Action preferences - slight preference for staying
-        self.E_matrix = np.array([0.7, 0.3])
+        # Action preferences - balanced to encourage exploration
+        self.E_matrix = np.array([0.6, 0.4])
         
         # Initialize agent
         self.agent = Agent(A=self.A_array, B=self.B_array, C=self.C_vector, E=self.E_matrix)
