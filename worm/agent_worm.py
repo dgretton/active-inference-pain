@@ -46,9 +46,9 @@ class AssociativeLearningWormAgent(ActiveInferenceWormAgent):
         
         # Action 0: stay - natural progression toward harm
         self.B_array[0][:, :, 0] = [
-            [0.7, 0.3, 0.0],  # from safe: mostly stay safe, some warning
-            [0.1, 0.6, 0.3],  # from warning: some safe, mostly warning, some harmful  
-            [0.0, 0.1, 0.9]   # from harmful: mostly stay harmful
+            [0.7, 0.2, 0.0],  # from safe: mostly stay safe, some warning
+            [0.2, 0.6, 0.3],  # from warning: some safe, mostly warning, some harmful  
+            [0.1, 0.2, 0.7]   # from harmful: mostly stay harmful
         ]
         
         # Action 1: retreat - move toward safety
