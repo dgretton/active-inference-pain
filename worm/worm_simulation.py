@@ -192,9 +192,6 @@ class WormVisualizer:
         self.observation_counts = np.zeros((4,))  # Count of each joint observation
         self.total_observations = 0
         
-        # Track preference history for visualization
-        self.preference_history = []
-        self.max_history_length = 100  # Keep last 100 updates
 
     def draw_regions(self):
         """Draw weird smell and nociception regions"""
@@ -354,135 +351,48 @@ class WormVisualizer:
         
         return y_offset + 20
     
-    def draw_preferences_panel(self, agent, y_start: int):
-        """Draw the preferences (C vector) visualization panel"""
+    def draw_state_beliefs_panel(self, qs, y_start: int):
+        """Draw the state beliefs (qs) visualization panel"""
         y_offset = y_start
         
         # Title
-        title = self.font.render("Preferences (C Vector)", True, self.BLACK)
+        title = self.font.render("State Beliefs", True, self.BLACK)
         self.config_surface.blit(title, (10, y_offset))
         y_offset += 30
         
-        # Check if agent has C_vector attribute
-        if hasattr(agent, 'C_vector'):
-            # Current preferences
-            current_title = self.small_font.render("Current Preferences:", True, self.BLACK)
-            self.config_surface.blit(current_title, (10, y_offset))
-            y_offset += 20
-            
-            # Noci preferences
-            noci_pref_text = self.small_font.render("Noci:", True, self.BLACK)
-            self.config_surface.blit(noci_pref_text, (10, y_offset))
-            
-            noci_present_pref = agent.C_vector[0][0]
-            noci_absent_pref = agent.C_vector[0][1]
-            
-            # Color code preferences
-            noci_present_color = self.RED if noci_present_pref < 0 else self.GREEN if noci_present_pref > 0 else self.BLACK
-            noci_absent_color = self.GREEN if noci_absent_pref > 0 else self.RED if noci_absent_pref < 0 else self.BLACK
-            
-            noci_values_text = self.small_font.render(f"Present: {noci_present_pref:.3f}, Absent: {noci_absent_pref:.3f}", True, self.BLACK)
-            self.config_surface.blit(noci_values_text, (60, y_offset))
-            y_offset += 18
-            
-            # Smell preferences
-            smell_pref_text = self.small_font.render("Smell:", True, self.BLACK)
-            self.config_surface.blit(smell_pref_text, (10, y_offset))
-            
-            smell_present_pref = agent.C_vector[1][0]
-            smell_absent_pref = agent.C_vector[1][1]
-            
-            # Color code smell preferences
-            smell_present_color = self.GREEN if smell_present_pref > 0 else self.RED if smell_present_pref < 0 else self.BLACK
-            smell_absent_color = self.GREEN if smell_absent_pref > 0 else self.RED if smell_absent_pref < 0 else self.BLACK
-            
-            # Show smell preference with color coding
-            smell_present_text = self.small_font.render(f"Present: {smell_present_pref:.3f}", True, smell_present_color)
-            smell_absent_text = self.small_font.render(f"Absent: {smell_absent_pref:.3f}", True, smell_absent_color)
-            
-            self.config_surface.blit(smell_present_text, (60, y_offset))
-            self.config_surface.blit(smell_absent_text, (200, y_offset))
-            y_offset += 25
-            
-            # Store current preferences for history
-            current_prefs = {
-                'smell_present': smell_present_pref,
-                'smell_absent': smell_absent_pref,
-                'noci_present': noci_present_pref,
-                'noci_absent': noci_absent_pref
-            }
-            self.preference_history.append(current_prefs)
-            
-            # Keep history manageable
-            if len(self.preference_history) > self.max_history_length:
-                self.preference_history.pop(0)
-            
-            # Draw preference trend graph for smell
-            if len(self.preference_history) > 1:
-                trend_title = self.small_font.render("Smell Preference Trend:", True, self.BLACK)
-                self.config_surface.blit(trend_title, (10, y_offset))
-                y_offset += 20
-                
-                # Graph parameters
-                graph_width = 300
-                graph_height = 60
-                graph_x = 10
-                graph_y = y_offset
-                
-                # Draw graph background
-                graph_rect = self.pygame.Rect(graph_x, graph_y, graph_width, graph_height)
-                self.pygame.draw.rect(self.config_surface, self.LIGHTGRAY, graph_rect, 1)
-                
-                # Draw zero line
-                zero_y = graph_y + graph_height // 2
-                self.pygame.draw.line(self.config_surface, self.DARKGRAY, 
-                                    (graph_x, zero_y), (graph_x + graph_width, zero_y), 1)
-                
-                # Plot smell preference history
-                if len(self.preference_history) > 1:
-                    smell_values = [p['smell_present'] for p in self.preference_history]
-                    
-                    # Use fixed range for better visualization
-                    display_min = -1.0  # Expected minimum smell preference
-                    display_max = 1.0   # Expected maximum smell preference
-                    display_range = display_max - display_min
-                    
-                    points = []
-                    for i, val in enumerate(smell_values):
-                        x = graph_x + (i / max(len(smell_values) - 1, 1)) * graph_width
-                        # Normalize to fixed range and invert y so positive values go up
-                        normalized_val = (val - display_min) / display_range
-                        # Clamp to [0, 1] range
-                        normalized_val = max(0.0, min(1.0, normalized_val))
-                        y = graph_y + graph_height - (normalized_val * graph_height)
-                        points.append((int(x), int(y)))
-                    
-                    # Draw the trend line
-                    if len(points) > 1:
-                        self.pygame.draw.lines(self.config_surface, self.BLUE, False, points, 2)
-                    
-                    # Draw current value indicator
-                    if points:
-                        current_point = points[-1]
-                        self.pygame.draw.circle(self.config_surface, self.RED, current_point, 3)
-                
-                # Add fixed labels for better reference
-                max_label = self.small_font.render("1.0", True, self.BLACK)
-                min_label = self.small_font.render("-1.0", True, self.BLACK)
-                zero_label = self.small_font.render("0.0", True, self.DARKGRAY)
-                
-                self.config_surface.blit(max_label, (graph_x + graph_width + 5, graph_y))
-                self.config_surface.blit(min_label, (graph_x + graph_width + 5, graph_y + graph_height - 15))
-                self.config_surface.blit(zero_label, (graph_x + graph_width + 5, graph_y + graph_height // 2 - 8))
-                
-                y_offset += graph_height + 25
-        else:
-            # Fallback if no C_vector
-            no_prefs_text = self.small_font.render("No preference data available", True, self.DARKGRAY)
-            self.config_surface.blit(no_prefs_text, (10, y_offset))
-            y_offset += 20
+        # State labels
+        state_labels = ["Safe", "Warning", "Harmful"]
+        state_colors = [self.GREEN, self.ORANGE, self.RED]
         
-        return y_offset
+        # Get beliefs
+        beliefs = qs[0] if len(qs) > 0 else [0.33, 0.33, 0.33]
+        
+        # Draw bar chart
+        max_bar_width = 250
+        bar_height = 25
+        
+        for i, (label, belief, color) in enumerate(zip(state_labels, beliefs, state_colors)):
+            # Draw label
+            label_text = self.small_font.render(f"{label}:", True, self.BLACK)
+            self.config_surface.blit(label_text, (10, y_offset))
+            
+            # Draw belief value
+            belief_text = self.small_font.render(f"{belief:.3f}", True, self.BLACK)
+            self.config_surface.blit(belief_text, (80, y_offset))
+            
+            # Draw bar
+            bar_width = int(belief * max_bar_width)
+            if bar_width > 0:
+                bar_rect = self.pygame.Rect(140, y_offset + 2, bar_width, bar_height - 4)
+                self.pygame.draw.rect(self.config_surface, color, bar_rect)
+            
+            # Draw bar outline
+            outline_rect = self.pygame.Rect(140, y_offset + 2, max_bar_width, bar_height - 4)
+            self.pygame.draw.rect(self.config_surface, self.BLACK, outline_rect, 1)
+            
+            y_offset += bar_height + 5
+        
+        return y_offset + 10
     
     def draw_observation_counts_panel(self, y_start: int):
         """Draw observation counts panel"""
@@ -582,12 +492,6 @@ class WormVisualizer:
         )
         self.sim_surface.blit(action_indicator, (10, 70))
         
-        # Draw belief state
-        belief_indicator = self.font.render(
-            f"Safe belief: {qs[0][0]:.2f}", 
-            True, self.BLUE
-        )
-        self.sim_surface.blit(belief_indicator, (10, 100))
 
         # Draw regions
         self.draw_regions()
@@ -610,7 +514,7 @@ class WormVisualizer:
         # Draw analysis panels on the right
         if A_matrix is not None:
             y_offset = self.draw_a_matrix_panel(A_matrix)
-            y_offset = self.draw_preferences_panel(agent, y_offset)
+            y_offset = self.draw_state_beliefs_panel(qs, y_offset)
             self.draw_observation_counts_panel(y_offset)
 
         # Update display
