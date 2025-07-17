@@ -68,8 +68,8 @@ class AssociativeLearningWormAgent(ActiveInferenceWormAgent):
         # Strong preference against noci
         self.C_vector[0] = np.array([-2.0, 1.0])  # hate noci, prefer no noci
         
-        # Initially neutral about smell (will learn through association)
-        self.C_vector[1] = np.array([0.0, 0.0])   # neutral about smell initially
+        # Initially positive about smell (will learn to avoid through association)
+        self.C_vector[1] = np.array([0.5, 0.0])   # mild preference for smell initially
         
         # Action preferences - slight preference for staying
         self.E_matrix = np.array([0.7, 0.3])
