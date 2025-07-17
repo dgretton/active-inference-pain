@@ -1,5 +1,7 @@
 # Active Inference Models of Pain Learning
 
+![Worm Learning Animation](actinf_worm_moving.gif)
+
 ## Overview
 Our aim is to use active inference to provide a computational account of how pain arises and may become chronic. This project implements a simple demonstration of this phenomenon through a simulated "worm" agent that learns to avoid noxious stimuli.
 
