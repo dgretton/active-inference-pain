@@ -704,10 +704,10 @@ if __name__ == "__main__":
         A_array[0][:, 1] = [0.1, 0.9]    # warning: still mostly no noci
         A_array[0][:, 2] = [0.9, 0.1]    # harmful: very likely noci
         
-        # A matrix for smell modality
-        A_array[1][:, 0] = [0.1, 0.9]    # safe: unlikely smell
-        A_array[1][:, 1] = [0.8, 0.2]    # warning: likely smell (predictive cue)
-        A_array[1][:, 2] = [0.3, 0.7]    # harmful: some smell but not as strong predictor
+        # A matrix for smell modality - START NEUTRAL
+        A_array[1][:, 0] = [0.33, 0.67]  # safe: neutral about smell
+        A_array[1][:, 1] = [0.33, 0.67]  # warning: neutral about smell initially  
+        A_array[1][:, 2] = [0.33, 0.67]  # harmful: neutral about smell initially
 
         print("Starting associative learning simulation...")
         print("The agent should learn to associate smell with upcoming nociception.")
