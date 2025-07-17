@@ -101,7 +101,7 @@ class AssociativeLearningWormAgent(ActiveInferenceWormAgent):
         
         return action, self.qs
 
-    def learn_associations(self, experience_history, learning_rate=0.00005):
+    def learn_associations(self, experience_history, learning_rate=0.001):
         """
         Learn associations based on experience history.
         Experience history: list of (observation, state_beliefs, action, reward) tuples
@@ -138,17 +138,17 @@ class AssociativeLearningWormAgent(ActiveInferenceWormAgent):
         smell_vec = np.zeros(2)
         smell_vec[smell_obs] = 1.0
         
-        # Ultra-conservative A matrix updates with Dirichlet-style learning
+        # Conservative A matrix updates with Dirichlet-style learning
         for state in range(self.num_states):
             belief_weight = qs[0][state]
             
-            # Only update if belief weight is very significant
-            if belief_weight > 0.3:  # Even higher threshold for updates
-                # Update noci A matrix with ultra-small learning rate
-                self.A_array[0][:, state] += noci_vec * belief_weight * learning_rate * 0.01
+            # Only update if belief weight is significant
+            if belief_weight > 0.2:  # Lower threshold for updates
+                # Update noci A matrix with small learning rate
+                self.A_array[0][:, state] += noci_vec * belief_weight * learning_rate * 0.1
                 
-                # Update smell A matrix with ultra-small learning rate
-                self.A_array[1][:, state] += smell_vec * belief_weight * learning_rate * 0.01
+                # Update smell A matrix with small learning rate
+                self.A_array[1][:, state] += smell_vec * belief_weight * learning_rate * 0.1
         
         # Normalize to maintain probability constraints
         for state in range(self.num_states):
@@ -167,17 +167,17 @@ class AssociativeLearningWormAgent(ActiveInferenceWormAgent):
         Update preferences based on reward - key for association learning.
         This is the mechanism that makes smell acquire motivational significance.
         """
-        # Ultra-gradual preference learning
+        # Gradual preference learning
         if noci_obs == 0:  # noci present
             # If smell was also present, create negative association
             if smell_obs == 0:  # smell present too
-                self.C_vector[1][0] -= learning_rate * 0.001  # ultra-gradual aversion to smell
-                self.C_vector[1][1] += learning_rate * 0.0005  # ultra-slight preference for no smell
+                self.C_vector[1][0] -= learning_rate * 0.02  # gradual aversion to smell
+                self.C_vector[1][1] += learning_rate * 0.01  # slight preference for no smell
             
         # If we avoided noci in presence of smell, slightly reduce aversion
         elif noci_obs == 1 and smell_obs == 0:  # no noci, but smell present
             # This represents successful avoidance - don't punish smell as much
-            self.C_vector[1][0] += learning_rate * 0.0002  # ultra-slight positive update
+            self.C_vector[1][0] += learning_rate * 0.005  # slight positive update
 
     def get_learning_metrics(self):
         """Get metrics to analyze learning progress"""
@@ -221,7 +221,7 @@ class SimpleLearningAgent(AssociativeLearningWormAgent):
     def __init__(self, A_matrix=None):
         super().__init__(A_matrix)
 
-    def learn(self, history, learning_rate=0.00005, pseudocount=0.01):
+    def learn(self, history, learning_rate=0.001, pseudocount=0.01):
         """
         Learn from history using the new associative learning framework.
         history: list of tuples [(phys_state, qs, action), ...]
