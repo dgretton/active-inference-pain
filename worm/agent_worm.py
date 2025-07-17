@@ -45,17 +45,18 @@ class AssociativeLearningWormAgent(ActiveInferenceWormAgent):
         ])
         
         # Action 0: stay - natural progression toward harm
+        # Each column must sum to 1.0 (transition probabilities from each state)
         self.B_array[0][:, :, 0] = [
-            [0.7, 0.2, 0.0],  # from safe: mostly stay safe, some warning
-            [0.2, 0.6, 0.3],  # from warning: some safe, mostly warning, some harmful  
-            [0.1, 0.2, 0.7]   # from harmful: mostly stay harmful
+            [0.7, 0.2, 0.0],  # to safe: from safe=0.7, from warning=0.2, from harmful=0.0
+            [0.2, 0.6, 0.3],  # to warning: from safe=0.2, from warning=0.6, from harmful=0.3
+            [0.1, 0.2, 0.7]   # to harmful: from safe=0.1, from warning=0.2, from harmful=0.7
         ]
         
         # Action 1: retreat - move toward safety
         self.B_array[0][:, :, 1] = [
-            [0.9, 0.1, 0.0],  # from safe: very likely stay safe
-            [0.7, 0.2, 0.1],  # from warning: likely return to safe
-            [0.4, 0.4, 0.2]   # from harmful: good chance to escape
+            [0.9, 0.7, 0.4],  # to safe: from safe=0.9, from warning=0.7, from harmful=0.4
+            [0.1, 0.2, 0.4],  # to warning: from safe=0.1, from warning=0.2, from harmful=0.4
+            [0.0, 0.1, 0.2]   # to harmful: from safe=0.0, from warning=0.1, from harmful=0.2
         ]
         
         # Preferences over observations (C vector) - key for association learning
