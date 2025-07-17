@@ -105,9 +105,33 @@ class AssociativeLearningWormAgent(ActiveInferenceWormAgent):
         # Store last action probabilities for debugging
         self.last_action_probs = q_pi
         
+        # Debug decision making occasionally
+        if not hasattr(self, 'debug_counter'):
+            self.debug_counter = 0
+        self.debug_counter += 1
+        if self.debug_counter % 100 == 0:  # Print every 100 steps
+            self.debug_decision(observation)
+        
         return action, self.qs
 
-    def learn_associations(self, experience_history, learning_rate=0.002):
+    def debug_decision(self, observation):
+        """Debug why agent is choosing actions"""
+        noci_present, smell_present = observation
+        noci_obs = 0 if noci_present else 1
+        smell_obs = 0 if smell_present else 1
+        
+        # Get current beliefs and policy
+        qs = self.agent.infer_states([noci_obs, smell_obs])
+        q_pi, efe = self.agent.infer_policies()
+        
+        print(f"Observation: noci={noci_present}, smell={smell_present}")
+        print(f"State beliefs: {qs[0]}")
+        print(f"Action probabilities: stay={q_pi[0]:.3f}, retreat={q_pi[1]:.3f}")
+        print(f"C_smell: {self.C_vector[1]}")
+        print(f"E_matrix: {self.E_matrix}")
+        print("---")
+
+    def learn_associations(self, experience_history, learning_rate=0.003):
         """
         Learn associations based on experience history.
         Experience history: list of (observation, state_beliefs, action, reward) tuples
@@ -173,17 +197,22 @@ class AssociativeLearningWormAgent(ActiveInferenceWormAgent):
         Update preferences based on reward - key for association learning.
         This is the mechanism that makes smell acquire motivational significance.
         """
-        # More noticeable preference learning
+        # Persistent preference learning that accumulates over time
         if noci_obs == 0:  # noci present
-            # If smell was also present, create negative association
+            # If smell was also present, create strong negative association
             if smell_obs == 0:  # smell present too
-                self.C_vector[1][0] -= learning_rate * 0.05  # more noticeable aversion to smell
-                self.C_vector[1][1] += learning_rate * 0.02  # preference for no smell
+                self.C_vector[1][0] -= learning_rate * 0.1  # stronger aversion to smell
+                self.C_vector[1][1] += learning_rate * 0.05  # stronger preference for no smell
+            # Even if smell wasn't present during noci, slightly reduce smell preference
+            # This creates a more general aversion that persists
+            else:
+                self.C_vector[1][0] -= learning_rate * 0.02  # general smell aversion
+                self.C_vector[1][1] += learning_rate * 0.01  # general preference for no smell
             
-        # If we avoided noci in presence of smell, slightly reduce aversion
+        # If we avoided noci in presence of smell, only very slightly reduce aversion
         elif noci_obs == 1 and smell_obs == 0:  # no noci, but smell present
-            # This represents successful avoidance - don't punish smell as much
-            self.C_vector[1][0] += learning_rate * 0.01  # slight positive update
+            # Much smaller positive update to prevent oscillation
+            self.C_vector[1][0] += learning_rate * 0.005  # very slight positive update
 
     def get_learning_metrics(self):
         """Get metrics to analyze learning progress"""
@@ -227,7 +256,7 @@ class SimpleLearningAgent(AssociativeLearningWormAgent):
     def __init__(self, A_matrix=None):
         super().__init__(A_matrix)
 
-    def learn(self, history, learning_rate=0.002, pseudocount=0.01):
+    def learn(self, history, learning_rate=0.003, pseudocount=0.01):
         """
         Learn from history using the new associative learning framework.
         history: list of tuples [(phys_state, qs, action), ...]
