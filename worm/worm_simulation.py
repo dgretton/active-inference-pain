@@ -19,8 +19,8 @@ class SimulationConfig:
     learning_rate: float = .05
     
     # Region definitions
-    weird_smell_height: float = 525.0
-    weird_smell_thickness: float = 75.0
+    weird_smell_height: float = 450.0
+    weird_smell_thickness: float = 150.0
     noci_height: float = 550.0
     noci_thickness: float = 50.0
     # weird_smell_height: float = 550.0  # Change from 485.0
@@ -587,7 +587,7 @@ if __name__ == "__main__":
             print(f"\n=== Episode {episode + 1} ===")
             
             # Run simulation with learning agent
-            history = run_visual_simulation(config, A_array, num_steps=200, agent_type=SimpleLearningAgent)
+            history = run_visual_simulation(config, A_array, num_steps=800, agent_type=SimpleLearningAgent)
             
             # Get learning metrics from the last simulation
             if history:
