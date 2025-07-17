@@ -101,7 +101,7 @@ class AssociativeLearningWormAgent(ActiveInferenceWormAgent):
         
         return action, self.qs
 
-    def learn_associations(self, experience_history, learning_rate=0.001):
+    def learn_associations(self, experience_history, learning_rate=0.002):
         """
         Learn associations based on experience history.
         Experience history: list of (observation, state_beliefs, action, reward) tuples
@@ -167,17 +167,17 @@ class AssociativeLearningWormAgent(ActiveInferenceWormAgent):
         Update preferences based on reward - key for association learning.
         This is the mechanism that makes smell acquire motivational significance.
         """
-        # Gradual preference learning
+        # More noticeable preference learning
         if noci_obs == 0:  # noci present
             # If smell was also present, create negative association
             if smell_obs == 0:  # smell present too
-                self.C_vector[1][0] -= learning_rate * 0.02  # gradual aversion to smell
-                self.C_vector[1][1] += learning_rate * 0.01  # slight preference for no smell
+                self.C_vector[1][0] -= learning_rate * 0.05  # more noticeable aversion to smell
+                self.C_vector[1][1] += learning_rate * 0.02  # preference for no smell
             
         # If we avoided noci in presence of smell, slightly reduce aversion
         elif noci_obs == 1 and smell_obs == 0:  # no noci, but smell present
             # This represents successful avoidance - don't punish smell as much
-            self.C_vector[1][0] += learning_rate * 0.005  # slight positive update
+            self.C_vector[1][0] += learning_rate * 0.01  # slight positive update
 
     def get_learning_metrics(self):
         """Get metrics to analyze learning progress"""
@@ -221,7 +221,7 @@ class SimpleLearningAgent(AssociativeLearningWormAgent):
     def __init__(self, A_matrix=None):
         super().__init__(A_matrix)
 
-    def learn(self, history, learning_rate=0.001, pseudocount=0.01):
+    def learn(self, history, learning_rate=0.002, pseudocount=0.01):
         """
         Learn from history using the new associative learning framework.
         history: list of tuples [(phys_state, qs, action), ...]
