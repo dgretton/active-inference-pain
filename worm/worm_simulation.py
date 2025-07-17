@@ -587,7 +587,7 @@ if __name__ == "__main__":
             print(f"\n=== Episode {episode + 1} ===")
             
             # Run simulation with learning agent
-            history = run_visual_simulation(config, A_array, num_steps=500, agent_type=SimpleLearningAgent)
+            history = run_visual_simulation(config, A_array, num_steps=200, agent_type=SimpleLearningAgent)
             
             # Get learning metrics from the last simulation
             if history:

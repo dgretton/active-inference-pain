@@ -101,7 +101,7 @@ class AssociativeLearningWormAgent(ActiveInferenceWormAgent):
         
         return action, self.qs
 
-    def learn_associations(self, experience_history, learning_rate=0.02):
+    def learn_associations(self, experience_history, learning_rate=0.005):
         """
         Learn associations based on experience history.
         Experience history: list of (observation, state_beliefs, action, reward) tuples
@@ -138,15 +138,17 @@ class AssociativeLearningWormAgent(ActiveInferenceWormAgent):
         smell_vec = np.zeros(2)
         smell_vec[smell_obs] = 1.0
         
-        # Update A matrices weighted by state beliefs
+        # More conservative A matrix updates with Dirichlet-style learning
         for state in range(self.num_states):
             belief_weight = qs[0][state]
             
-            # Update noci A matrix
-            self.A_array[0][:, state] += noci_vec * belief_weight * learning_rate
-            
-            # Update smell A matrix  
-            self.A_array[1][:, state] += smell_vec * belief_weight * learning_rate
+            # Only update if belief weight is significant
+            if belief_weight > 0.1:
+                # Update noci A matrix with smaller learning rate
+                self.A_array[0][:, state] += noci_vec * belief_weight * learning_rate * 0.5
+                
+                # Update smell A matrix with smaller learning rate
+                self.A_array[1][:, state] += smell_vec * belief_weight * learning_rate * 0.5
         
         # Normalize to maintain probability constraints
         for state in range(self.num_states):
@@ -165,16 +167,17 @@ class AssociativeLearningWormAgent(ActiveInferenceWormAgent):
         Update preferences based on reward - key for association learning.
         This is the mechanism that makes smell acquire motivational significance.
         """
-        # If we experienced noci (negative reward), increase aversion to smell
+        # Much more gradual preference learning
         if noci_obs == 0:  # noci present
-            # Decrease preference for smell (make it aversive)
-            self.C_vector[1][0] -= learning_rate * 0.5  # smell present becomes bad
-            self.C_vector[1][1] += learning_rate * 0.2  # smell absent becomes better
+            # If smell was also present, create negative association
+            if smell_obs == 0:  # smell present too
+                self.C_vector[1][0] -= learning_rate * 0.05  # very gradual aversion to smell
+                self.C_vector[1][1] += learning_rate * 0.02  # slight preference for no smell
             
-        # If we avoided noci in presence of smell, slightly increase preference
+        # If we avoided noci in presence of smell, slightly reduce aversion
         elif noci_obs == 1 and smell_obs == 0:  # no noci, but smell present
-            # This represents successful avoidance - smell predicted danger but we avoided it
-            self.C_vector[1][0] += learning_rate * 0.1
+            # This represents successful avoidance - don't punish smell as much
+            self.C_vector[1][0] += learning_rate * 0.01  # very slight positive update
 
     def get_learning_metrics(self):
         """Get metrics to analyze learning progress"""
@@ -218,7 +221,7 @@ class SimpleLearningAgent(AssociativeLearningWormAgent):
     def __init__(self, A_matrix=None):
         super().__init__(A_matrix)
 
-    def learn(self, history, learning_rate=0.02, pseudocount=0.01):
+    def learn(self, history, learning_rate=0.005, pseudocount=0.01):
         """
         Learn from history using the new associative learning framework.
         history: list of tuples [(phys_state, qs, action), ...]
@@ -238,7 +241,9 @@ class SimpleLearningAgent(AssociativeLearningWormAgent):
         # Use the associative learning mechanism
         self.learn_associations(experience_history, learning_rate)
         
-        # Print learning progress
+        # Print learning progress with more detail
         metrics = self.get_learning_metrics()
         if metrics:
             print(f"Learning metrics: {metrics}")
+            print(f"Current C_smell: {self.C_vector[1]}")
+            print(f"A_noci shape: {self.A_array[0].shape}, A_smell shape: {self.A_array[1].shape}")
