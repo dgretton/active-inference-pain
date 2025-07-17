@@ -80,6 +80,9 @@ class AssociativeLearningWormAgent(ActiveInferenceWormAgent):
         
         # Track learning history for analysis
         self.learning_history = []
+        
+        # Store last action probabilities for debugging
+        self.last_action_probs = np.array([0.5, 0.5])
 
     def infer(self, observation: Tuple[bool, bool]) -> Tuple[int, np.ndarray]:
         """
@@ -98,6 +101,9 @@ class AssociativeLearningWormAgent(ActiveInferenceWormAgent):
         # Get action through policy inference
         q_pi, efe = self.agent.infer_policies()
         action = self.agent.sample_action()[0]
+        
+        # Store last action probabilities for debugging
+        self.last_action_probs = q_pi
         
         return action, self.qs
 

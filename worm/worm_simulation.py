@@ -647,6 +647,15 @@ if __name__ == "__main__":
             
             episode += 1
             
+            # Print detailed debug info every 100 episodes
+            if episode % 100 == 0 and history:
+                temp_agent = SimpleLearningAgent(A_array)
+                temp_agent.learn(history)
+                print(f"Episode {episode}:")
+                print(f"  E_matrix: {temp_agent.E_matrix}")
+                print(f"  C_smell: {temp_agent.C_vector[1]}")
+                print(f"  Last action probs: stay={temp_agent.last_action_probs[0]:.2f}, retreat={temp_agent.last_action_probs[1]:.2f}")
+            
             # Optional: break after certain number of episodes
             if episode >= 10:
                 print(f"\nCompleted {episode} learning episodes.")
