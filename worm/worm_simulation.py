@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import List, Tuple
 from pymdp import utils
 # from worm_simulation_dynamic_perception_and_policy_selection_chatgpt import ActiveInferenceAgent
-from agent_worm import ActiveInferenceWormAgent, SimpleHomeostaticAgent
+from agent_worm import ActiveInferenceWormAgent, SimpleHomeostaticAgent, AssociativeLearningWormAgent, SimpleLearningAgent
 
 @dataclass
 class SimulationConfig:
@@ -55,7 +55,7 @@ class WormPhysState:
 class WormSimulation:
     """Main simulation class"""
     
-    def __init__(self, config: SimulationConfig, agent_type:ActiveInferenceWormAgent, A_matrix=None):
+    def __init__(self, config: SimulationConfig, agent_type=AssociativeLearningWormAgent, A_matrix=None):
         self.config = config
         self.phys_state = WormPhysState.initialize(config)
         self.A_matrix = A_matrix
@@ -119,11 +119,9 @@ class WormSimulation:
         if self.config.noci_height <= y <= (self.config.noci_height + self.config.noci_thickness):
             self.phys_state.noci = True
 
-    def get_observations(self) -> Tuple[int, int]:
-        """Get current observations from worm state"""
-        weird_smell_observation = 0 if self.phys_state.weird_smell else 1
-        noci_observation = 0 if self.phys_state.noci else 1
-        return (noci_observation, weird_smell_observation)
+    def get_observations(self) -> Tuple[bool, bool]:
+        """Get current observations from worm state as boolean values"""
+        return (self.phys_state.noci, self.phys_state.weird_smell)
 
     def step(self) -> Tuple[WormPhysState, np.ndarray, int]:
         """Perform one simulation step"""
@@ -132,9 +130,9 @@ class WormSimulation:
         self.update_physics(action)
         return self.phys_state, qs, action
 
-def run_simulation(config: SimulationConfig, num_steps: int) -> List[Tuple[WormPhysState, np.ndarray, int]]:
+def run_simulation(config: SimulationConfig, num_steps: int, agent_type=AssociativeLearningWormAgent) -> List[Tuple[WormPhysState, np.ndarray, int]]:
     """Run a single simulation for specified number of steps"""
-    sim = WormSimulation(config, agent_type=SimpleHomeostaticAgent)
+    sim = WormSimulation(config, agent_type=agent_type)
     history = []
     
     for _ in range(num_steps):
@@ -419,9 +417,9 @@ class WormVisualizer:
         """Clean up pygame resources"""
         self.pygame.quit()
 
-def run_visual_simulation(config: SimulationConfig, A_matrix, num_steps: int = None):
+def run_visual_simulation(config: SimulationConfig, A_matrix=None, num_steps: int = None, agent_type=AssociativeLearningWormAgent):
     """Run a single simulation with visualization"""
-    sim = WormSimulation(config, agent_type=SimpleHomeostaticAgent, A_matrix=A_matrix)
+    sim = WormSimulation(config, agent_type=agent_type, A_matrix=A_matrix)
     vis = WormVisualizer(config)
     
     running = True
@@ -433,7 +431,7 @@ def run_visual_simulation(config: SimulationConfig, A_matrix, num_steps: int = N
             phys_state, qs, action = sim.step()
             history.append((phys_state, qs, action))
             # Pass the current A matrix to the visualizer
-            current_A_matrix = sim.agent.agent.A[0] if hasattr(sim.agent, 'agent') else A_matrix[0]
+            current_A_matrix = sim.agent.agent.A[0] if hasattr(sim.agent, 'agent') else (A_matrix[0] if A_matrix else sim.agent.A_array[0])
             running = vis.draw_frame(phys_state, qs, action, current_A_matrix)
             step += 1
     finally:
@@ -441,28 +439,26 @@ def run_visual_simulation(config: SimulationConfig, A_matrix, num_steps: int = N
     
     return history
 
-def update_A_from_history(history, A, learning_rate=1, pseudocount=0.01):
+def update_A_from_history(history, A, learning_rate=0.02, pseudocount=0.01):
+    """
+    Updated learning function that works with the new associative agent structure.
+    This is kept for backward compatibility but the agent's internal learning is preferred.
+    """
+    # For the new agent structure, we should use the agent's own learning mechanism
+    # This function is kept for compatibility with existing code
+    
+    # Convert history to experience format
+    experience_history = []
     for phys_state, qs, action in history:
-            
-            # Update A matrix - now only need to update one matrix
-            safe_state_value = qs[0][0]
-            harmful_state_value = qs[0][1]
-            
-            # Create one-hot vector for the observation
-            update_vector = np.zeros(4) #num joint observations
-            weird_smell, noci = phys_state.weird_smell, phys_state.noci
-            joint_observation = 0 if (weird_smell, noci) == (False, False) else 1 if (weird_smell, noci) == (False, True) else 2 if (weird_smell, noci) == (True, False) else 3
-            update_vector[joint_observation] = 1.0
-            # update_vector += np.array([.5, .5, 0, 0]) if noci_observation == 0 else np.array([0, 0, .5, .5])
-            # update_vector += np.array([.5, 0, .5, 0]) if weird_smell_observation == 0 else np.array([0, .5, 0, .5])
-            
-            # Update A matrix for both states with pseudocounts to prevent collapse
-            A[0][:, 0] += update_vector * safe_state_value * learning_rate + pseudocount
-            A[0][:, 1] += update_vector * harmful_state_value * learning_rate + pseudocount
-    # Normalize A matrix columns to maintain proper probabilities
-    A[0][:, 0] = A[0][:, 0] / np.sum(A[0][:, 0])
-    A[0][:, 1] = A[0][:, 1] / np.sum(A[0][:, 1])
-    return A
+        observation = (phys_state.noci, phys_state.weird_smell)
+        reward = -1.0 if phys_state.noci else 0.0
+        experience_history.append((observation, qs, action, reward))
+    
+    # Create a temporary agent to do the learning
+    temp_agent = AssociativeLearningWormAgent(A)
+    temp_agent.learn_associations(experience_history, learning_rate)
+    
+    return temp_agent.A_array
 
 if __name__ == "__main__":
     # Example usage showing both visual and parallel capabilities
@@ -483,35 +479,58 @@ if __name__ == "__main__":
         # Run visual simulation
         config = SimulationConfig()
 
+        # Initialize A matrices for separate modalities (noci and smell)
         A_array = utils.obj_array_zeros([
-            (4, 2), # num joint observations over smell/noci, num states
-            #(2, 2) # pain/no pain, num states
+            (2, 3),  # noci modality: [noci_present, noci_absent] x [safe, warning, harmful]
+            (2, 3)   # smell modality: [smell_present, smell_absent] x [safe, warning, harmful]
         ])
 
-        # The initial A matrix sets the "polarity" of safe and harmful states
-        # The A matrix will change significantly during simulation as learning occurs,
-        # but initial values correlate noci with harmful state to break symmetry
-        # This gives the baseline for where subsequent observations will be "sorted"
+        # A matrix for noci modality
+        # States: 0=safe, 1=warning, 2=harmful
+        A_array[0][:, 0] = [0.05, 0.95]  # safe: very unlikely noci
+        A_array[0][:, 1] = [0.1, 0.9]    # warning: still mostly no noci
+        A_array[0][:, 2] = [0.9, 0.1]    # harmful: very likely noci
         
-        # Safe state (0) - noci should be impossible
-        A_array[0][:, 0] = [0.0,  # joint_obs 0: smell + noci (impossible in safe)
-                           0.0,   # joint_obs 1: no smell + noci (impossible in safe)
-                           0.5,   # joint_obs 2: smell + no noci (possible in safe)
-                           0.5]   # joint_obs 3: no smell + no noci (possible in safe)
+        # A matrix for smell modality
+        A_array[1][:, 0] = [0.1, 0.9]    # safe: unlikely smell
+        A_array[1][:, 1] = [0.8, 0.2]    # warning: likely smell (predictive cue)
+        A_array[1][:, 2] = [0.3, 0.7]    # harmful: some smell but not as strong predictor
 
-        # Harmful state (1) - noci is likely
-        A_array[0][:, 1] = [.5,   # joint_obs 0: smell + noci (likely in harmful)
-                           .5,    # joint_obs 1: no smell + noci (likely in harmful)
-                           0,     # joint_obs 2: smell + no noci (unlikely in harmful)
-                           0]     # joint_obs 3: no smell + no noci (unlikely in harmful)
+        print("Starting associative learning simulation...")
+        print("The agent should learn to associate smell with upcoming nociception.")
+        print("Watch for:")
+        print("1. Smell aversion development (C_smell[0] becomes negative)")
+        print("2. Predictive behavior (retreat when smell detected)")
+        print("3. A matrix updates showing smell-noci associations")
+        print()
 
-        # Second matrix is identity
-        # A_array[1][:, 0] = [1.0, 0.0]
-        # A_array[1][:, 1] = [0.0, 1.0]
-
-
+        episode = 0
         while True:
-            history = run_visual_simulation(config, A_array, num_steps=1000)
-            # Learning
-            A_array = update_A_from_history(history, A_array)
-            print(f"Updated A matrix:\n{A_array[0]}")
+            print(f"\n=== Episode {episode + 1} ===")
+            
+            # Run simulation with learning agent
+            history = run_visual_simulation(config, A_array, num_steps=500, agent_type=SimpleLearningAgent)
+            
+            # Get learning metrics from the last simulation
+            if history:
+                # Create agent to analyze final state
+                temp_agent = SimpleLearningAgent(A_array)
+                temp_agent.learn(history)
+                metrics = temp_agent.get_learning_metrics()
+                
+                if metrics:
+                    print(f"Learning Progress:")
+                    print(f"  Smell aversion: {metrics['smell_aversion']:.3f}")
+                    print(f"  Smell preference difference: {metrics['smell_preference_diff']:.3f}")
+                    print(f"  A(smell|warning): {metrics['A_smell_warning_predictive']:.3f}")
+                    print(f"  A(noci|harmful): {metrics['A_noci_harmful_predictive']:.3f}")
+                
+                # Update A_array for next episode
+                A_array = temp_agent.A_array
+            
+            episode += 1
+            
+            # Optional: break after certain number of episodes
+            if episode >= 10:
+                print(f"\nCompleted {episode} learning episodes.")
+                break

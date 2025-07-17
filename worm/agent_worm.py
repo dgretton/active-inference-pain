@@ -6,132 +6,238 @@ from pymdp.agent import Agent
 class ActiveInferenceWormAgent:
     pass
 
-class SimpleHomeostaticAgent(ActiveInferenceWormAgent):
-    """Agent implementing active inference for worm control using joint observations"""
+class AssociativeLearningWormAgent(ActiveInferenceWormAgent):
+    """
+    Worm agent that can learn associations between smell and nociception,
+    based on successful classical conditioning structure with separate modalities.
+    """
     
     def __init__(self, A_matrix=None):
-        # Define model dimensions
-        self.num_obs_joint = 4  # (weird_smell,noci)/(no-weird-smell,noci)/(weird_smell,no-noci)/(no-weird-smell,no-noci)
-        self.num_states = 2     # safe/harmful
-        self.num_controls = 2   # stay/retreat
-        self.A_matrix = A_matrix
-
-        # Initialize matrices
-        if self.A_matrix is not None:
-            self.A_array = self.A_matrix
+        # Separate observation modalities (key insight from classical conditioning)
+        self.num_obs_noci = 2    # [noci_present, noci_absent]
+        self.num_obs_smell = 2   # [smell_present, smell_absent]
+        self.num_states = 3      # [safe, warning, harmful] - allows temporal prediction
+        self.num_controls = 2    # [stay, retreat]
+        
+        # Initialize A matrices for separate modalities
+        if A_matrix is not None:
+            self.A_array = A_matrix
         else:
             self.A_array = utils.obj_array_zeros([
-                (self.num_obs_joint, self.num_states)
+                (self.num_obs_noci, self.num_states),   # noci observations
+                (self.num_obs_smell, self.num_states)   # smell observations
             ])
-        
-            # A[observation, state]
-            # States: 0=safe, 1=harmful
-            # Joint observations (encoding: 0=stimulus present, 1=stimulus absent):
-            # 0 = smell present, noci present (most dangerous)
-            # 1 = smell absent, noci present  
-            # 2 = smell present, noci absent
-            # 3 = smell absent, noci absent (safest)
+            
+            # A matrix for noci modality
+            # States: 0=safe, 1=warning, 2=harmful
+            self.A_array[0][:, 0] = [0.05, 0.95]  # safe: very unlikely noci
+            self.A_array[0][:, 1] = [0.1, 0.9]    # warning: still mostly no noci
+            self.A_array[0][:, 2] = [0.9, 0.1]    # harmful: very likely noci
+            
+            # A matrix for smell modality
+            self.A_array[1][:, 0] = [0.1, 0.9]    # safe: unlikely smell
+            self.A_array[1][:, 1] = [0.8, 0.2]    # warning: likely smell (predictive cue)
+            self.A_array[1][:, 2] = [0.3, 0.7]    # harmful: some smell but not as strong predictor
 
-            # Initialize with reasonable priors:
-            # In safe state (0):
-            self.A_array[0][:, 0] = [0.0,  # joint_obs 0: smell + noci (impossible in safe state)
-                                    0.0,   # joint_obs 1: no smell + noci (impossible in safe state)
-                                    0.5,   # joint_obs 2: smell + no noci (possible in safe state)
-                                    0.5]   # joint_obs 3: no smell + no noci (possible in safe state)
-
-            # In harmful state (1):
-            self.A_array[0][:, 1] = [0.25,  # joint_obs 0: smell + noci (likely in harmful state)
-                                    0.25,   # joint_obs 1: no smell + noci (likely in harmful state)
-                                    0.25,   # joint_obs 2: smell + no noci (possible in harmful state)
-                                    0.25]   # joint_obs 3: no smell + no noci (possible in harmful state)
-
-        # Keep same B matrix structure
+        # B matrix: state transitions with temporal structure
         self.B_array = utils.obj_array_zeros([
             (self.num_states, self.num_states, self.num_controls)
         ])
-        self.B_array[0][:, :, 0] = np.eye(2)  # stay action keeps state
-        self.B_array[0][:, :, 1] = [[1, .8],  # retreat action tends toward safe
-                                   [0, .2]]
-
-        # Preferences over joint observations
+        
+        # Action 0: stay - natural progression toward harm
+        self.B_array[0][:, :, 0] = [
+            [0.7, 0.3, 0.0],  # from safe: mostly stay safe, some warning
+            [0.1, 0.6, 0.3],  # from warning: some safe, mostly warning, some harmful  
+            [0.0, 0.1, 0.9]   # from harmful: mostly stay harmful
+        ]
+        
+        # Action 1: retreat - move toward safety
+        self.B_array[0][:, :, 1] = [
+            [0.9, 0.1, 0.0],  # from safe: very likely stay safe
+            [0.7, 0.2, 0.1],  # from warning: likely return to safe
+            [0.4, 0.4, 0.2]   # from harmful: good chance to escape
+        ]
+        
+        # Preferences over observations (C vector) - key for association learning
         self.C_vector = utils.obj_array_zeros([
-            (self.num_obs_joint,),
-            #(self.num_states,)
+            (self.num_obs_noci,),
+            (self.num_obs_smell,)
         ])
-        # Prefer no pain and neither nociception nor weird_smell technically matter, 
-        # though in practice there is a strong preference induced for no nociception
-        self.C_vector[0] = np.array([0.5, 0.5, 0.5, 0.5])  # No preferences
-        #self.C_vector[1] = np.array([1.0, 0])  # Prefer safe state
-
-        # Keep same action preferences
-        self.E_matrix = np.array([0.8, 0.2])  # prefer staying to retreating
-
-        # Initialize agent and beliefs
+        
+        # Strong preference against noci
+        self.C_vector[0] = np.array([-2.0, 1.0])  # hate noci, prefer no noci
+        
+        # Initially neutral about smell (will learn through association)
+        self.C_vector[1] = np.array([0.0, 0.0])   # neutral about smell initially
+        
+        # Action preferences - slight preference for staying
+        self.E_matrix = np.array([0.7, 0.3])
+        
+        # Initialize agent
         self.agent = Agent(A=self.A_array, B=self.B_array, C=self.C_vector, E=self.E_matrix)
         self.qs = utils.obj_array_uniform([(self.num_states,)])
+        
+        # Track learning history for analysis
+        self.learning_history = []
 
-    def infer(self, observation: Tuple[int, int]) -> Tuple[int, np.ndarray]:
-        """Update agent beliefs and get action"""
-
-        noci_observation, weird_smell_observation = observation # REMEMBER: 0 = weird_smell/noci, 1 = no weird_smell/noci
-        if (noci_observation, weird_smell_observation) == (0, 0):  #  noci, weird_smell
-            joint_observation = 0
-        elif (noci_observation, weird_smell_observation) == (0, 1): # noci, no weird_smell
-            joint_observation = 1
-        elif (noci_observation, weird_smell_observation) == (1, 0): # no noci, weird_smell
-            joint_observation = 2
-        elif (noci_observation, weird_smell_observation) == (1, 1): # no noci, no weird_smell
-            joint_observation = 3
-        else:
-            raise ValueError("Invalid observation")
-
-        # sample pain observation directly from the agent's state
-        # Sample pain observation based on the probability of being in safe state
-        # pain_observation = np.random.choice([0, 1], p=[self.qs[0][0], self.qs[0][1]])  # sample joint observation based on the probability of being in safe state
-
-        # Update beliefs
-        self.qs = self.agent.infer_states([joint_observation])#, pain_observation])
-
-        # Get action
+    def infer(self, observation: Tuple[bool, bool]) -> Tuple[int, np.ndarray]:
+        """
+        Update agent beliefs and get action.
+        observation: (noci_present, smell_present)
+        """
+        noci_present, smell_present = observation
+        
+        # Convert to observation indices (0 = present, 1 = absent)
+        noci_obs = 0 if noci_present else 1
+        smell_obs = 0 if smell_present else 1
+        
+        # Update beliefs using both observation modalities
+        self.qs = self.agent.infer_states([noci_obs, smell_obs])
+        
+        # Get action through policy inference
         q_pi, efe = self.agent.infer_policies()
         action = self.agent.sample_action()[0]
-
+        
         return action, self.qs
+
+    def learn_associations(self, experience_history, learning_rate=0.02):
+        """
+        Learn associations based on experience history.
+        Experience history: list of (observation, state_beliefs, action, reward) tuples
+        """
+        for obs, qs, action, reward in experience_history:
+            noci_present, smell_present = obs
+            noci_obs = 0 if noci_present else 1
+            smell_obs = 0 if smell_present else 1
+            
+            # Update A matrices based on experience (similar to classical conditioning)
+            self._update_observation_model(noci_obs, smell_obs, qs, learning_rate)
+            
+            # Learn preferences (key insight from classical conditioning)
+            self._update_preferences(noci_obs, smell_obs, reward, learning_rate)
+        
+        # Update agent matrices
+        self.agent.A = self.A_array
+        self.agent.C = self.C_vector
+        
+        # Store learning state for analysis
+        self.learning_history.append({
+            'A_noci': self.A_array[0].copy(),
+            'A_smell': self.A_array[1].copy(),
+            'C_noci': self.C_vector[0].copy(),
+            'C_smell': self.C_vector[1].copy()
+        })
+
+    def _update_observation_model(self, noci_obs, smell_obs, qs, learning_rate):
+        """Update A matrices based on observed co-occurrences"""
+        # Create one-hot observation vectors
+        noci_vec = np.zeros(2)
+        noci_vec[noci_obs] = 1.0
+        
+        smell_vec = np.zeros(2)
+        smell_vec[smell_obs] = 1.0
+        
+        # Update A matrices weighted by state beliefs
+        for state in range(self.num_states):
+            belief_weight = qs[0][state]
+            
+            # Update noci A matrix
+            self.A_array[0][:, state] += noci_vec * belief_weight * learning_rate
+            
+            # Update smell A matrix  
+            self.A_array[1][:, state] += smell_vec * belief_weight * learning_rate
+        
+        # Normalize to maintain probability constraints
+        for state in range(self.num_states):
+            # Normalize noci modality
+            col_sum = self.A_array[0][:, state].sum()
+            if col_sum > 0:
+                self.A_array[0][:, state] /= col_sum
+                
+            # Normalize smell modality
+            col_sum = self.A_array[1][:, state].sum()
+            if col_sum > 0:
+                self.A_array[1][:, state] /= col_sum
+
+    def _update_preferences(self, noci_obs, smell_obs, reward, learning_rate):
+        """
+        Update preferences based on reward - key for association learning.
+        This is the mechanism that makes smell acquire motivational significance.
+        """
+        # If we experienced noci (negative reward), increase aversion to smell
+        if noci_obs == 0:  # noci present
+            # Decrease preference for smell (make it aversive)
+            self.C_vector[1][0] -= learning_rate * 0.5  # smell present becomes bad
+            self.C_vector[1][1] += learning_rate * 0.2  # smell absent becomes better
+            
+        # If we avoided noci in presence of smell, slightly increase preference
+        elif noci_obs == 1 and smell_obs == 0:  # no noci, but smell present
+            # This represents successful avoidance - smell predicted danger but we avoided it
+            self.C_vector[1][0] += learning_rate * 0.1
+
+    def get_learning_metrics(self):
+        """Get metrics to analyze learning progress"""
+        if not self.learning_history:
+            return None
+            
+        latest = self.learning_history[-1]
+        
+        return {
+            'smell_aversion': -latest['C_smell'][0],  # negative preference for smell
+            'smell_preference_diff': latest['C_smell'][1] - latest['C_smell'][0],
+            'A_smell_warning_predictive': latest['A_smell'][0, 1],  # P(smell|warning)
+            'A_noci_harmful_predictive': latest['A_noci'][0, 2],   # P(noci|harmful)
+            'learning_episodes': len(self.learning_history)
+        }
+
+
+class SimpleHomeostaticAgent(AssociativeLearningWormAgent):
+    """Backward compatibility wrapper for the original agent interface"""
+    
+    def __init__(self, A_matrix=None):
+        super().__init__(A_matrix)
+        
+    def infer(self, observation: Tuple[int, int]) -> Tuple[int, np.ndarray]:
+        """Convert old observation format to new format"""
+        noci_observation, weird_smell_observation = observation
+        
+        # Convert from old encoding (0=present, 1=absent) to boolean
+        noci_present = (noci_observation == 0)
+        smell_present = (weird_smell_observation == 0)
+        
+        return super().infer((noci_present, smell_present))
     
     # def learn(self, history, learning_rate):
     #     pass
     
 
-class SimpleLearningAgent(SimpleHomeostaticAgent):
-    """Agent implementing active inference for worm control using joint observations"""
+class SimpleLearningAgent(AssociativeLearningWormAgent):
+    """Agent with enhanced learning capabilities using the new associative structure"""
     
+    def __init__(self, A_matrix=None):
+        super().__init__(A_matrix)
 
-    def learn(self, history, learning_rate, pseudocount=0.01): #TODO: accumulate information from history and figure out how to update A matrix based on sum of episodic experience
-        # history is a list of tuples [(phys_state, qs, action), ...]
+    def learn(self, history, learning_rate=0.02, pseudocount=0.01):
+        """
+        Learn from history using the new associative learning framework.
+        history: list of tuples [(phys_state, qs, action), ...]
+        """
+        # Convert history to experience format expected by learn_associations
+        experience_history = []
+        
         for phys_state, qs, action in history:
+            # Convert physical state to observation format
+            observation = (phys_state.noci, phys_state.weird_smell)
             
-            # Update A matrix - now only need to update one matrix
-            safe_state_value = qs[0][0]
-            harmful_state_value = qs[0][1]
+            # Calculate reward (negative for noci)
+            reward = -1.0 if phys_state.noci else 0.0
             
-            # Create one-hot vector for the observation
-            update_vector = np.zeros(self.num_obs_joint)
-            weird_smell, noci = phys_state.weird_smell, phys_state.noci
-            joint_observation = 0 if (weird_smell, noci) == (False, False) else 1 if (weird_smell, noci) == (False, True) else 2 if (weird_smell, noci) == (True, False) else 3
-            update_vector[joint_observation] = 1.0
-            # update_vector += np.array([.5, .5, 0, 0]) if noci_observation == 0 else np.array([0, 0, .5, .5])
-            # update_vector += np.array([.5, 0, .5, 0]) if weird_smell_observation == 0 else np.array([0, .5, 0, .5])
-            
-            # Update A matrix for both states with pseudocounts to prevent collapse
-            self.agent.A[0][:, 0] += update_vector * safe_state_value * learning_rate + pseudocount
-            self.agent.A[0][:, 1] += update_vector * harmful_state_value * learning_rate + pseudocount
-
-            # No matter what, the probability of noci in safe state should be zero
-            # self.agent.A[0][0, 0] = 0.0
-            # self.agent.A[0][1, 0] = 0.0
-            
-            # # Normalize A matrix columns to maintain proper probabilities
-            # self.agent.A[0][:, 0] = self.agent.A[0][:, 0] / np.sum(self.agent.A[0][:, 0])
-            # self.agent.A[0][:, 1] = self.agent.A[0][:, 1] / np.sum(self.agent.A[0][:, 1])
-            
-        print(f"A matrix:\n{self.agent.A[0]}")
+            experience_history.append((observation, qs, action, reward))
+        
+        # Use the associative learning mechanism
+        self.learn_associations(experience_history, learning_rate)
+        
+        # Print learning progress
+        metrics = self.get_learning_metrics()
+        if metrics:
+            print(f"Learning metrics: {metrics}")
