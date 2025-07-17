@@ -222,58 +222,131 @@ class WormVisualizer:
             noci_rect.centery - noci_text.get_height() // 2
         ))
 
-    def draw_a_matrix_panel(self, A_matrix: np.ndarray):
-        """Draw the A matrix visualization panel"""
+    def draw_a_matrix_panel(self, A_matrix):
+        """Draw the A matrix visualization panel for separate modalities"""
         panel_width = self.config_surface.get_width()
         y_offset = 20
         
-        # Title
-        title = self.font.render("A Matrix (Observation | State)", True, self.BLACK)
-        self.config_surface.blit(title, (10, y_offset))
-        y_offset += 40
-        
-        # Observation labels (matching joint observation encoding)
-        obs_labels = [
-            "Smell, Noci",          # joint_observation = 0 (both stimuli present)
-            "No smell, Noci",       # joint_observation = 1 (only noci present)
-            "Smell, No noci",       # joint_observation = 2 (only smell present)
-            "No smell, No noci"     # joint_observation = 3 (neither present)
-        ]
-        
-        # State labels
-        state_labels = ["Safe", "Harmful"]
-        
-        # Draw headers
-        state_header_y = y_offset
-        for i, state_label in enumerate(state_labels):
-            x_pos = 120 + i * 120
-            header = self.small_font.render(state_label, True, self.BLACK)
-            self.config_surface.blit(header, (x_pos, state_header_y))
-        y_offset += 25
-        
-        # Draw A matrix values
-        for obs_idx, obs_label in enumerate(obs_labels):
-            # Observation label
-            obs_text = self.small_font.render(obs_label, True, self.BLACK)
-            self.config_surface.blit(obs_text, (10, y_offset))
+        # Check if A_matrix is the new format (list/array of modalities) or old format
+        if isinstance(A_matrix, (list, tuple)) or (hasattr(A_matrix, '__len__') and len(A_matrix) == 2):
+            # New format: separate modalities
             
-            # Values for each state
-            for state_idx in range(2):
-                x_pos = 120 + state_idx * 120
-                value = A_matrix[obs_idx, state_idx]
-                
-                # Color code based on value
-                if value > 0.6:
-                    color = self.GREEN
-                elif value > 0.3:
-                    color = self.ORANGE
-                else:
-                    color = self.RED
-                    
-                value_text = self.small_font.render(f"{value:.3f}", True, color)
-                self.config_surface.blit(value_text, (x_pos, y_offset))
+            # Title
+            title = self.font.render("A Matrices (Separate Modalities)", True, self.BLACK)
+            self.config_surface.blit(title, (10, y_offset))
+            y_offset += 30
             
+            # State labels for new 3-state system
+            state_labels = ["Safe", "Warning", "Harmful"]
+            
+            # Draw Noci Modality
+            noci_title = self.small_font.render("Noci Modality:", True, self.BLACK)
+            self.config_surface.blit(noci_title, (10, y_offset))
             y_offset += 20
+            
+            # Headers for noci modality
+            for i, state_label in enumerate(state_labels):
+                x_pos = 120 + i * 80
+                header = self.small_font.render(state_label, True, self.BLACK)
+                self.config_surface.blit(header, (x_pos, y_offset))
+            y_offset += 20
+            
+            # Noci observations
+            noci_obs_labels = ["Noci Present", "Noci Absent"]
+            for obs_idx, obs_label in enumerate(noci_obs_labels):
+                obs_text = self.small_font.render(obs_label, True, self.BLACK)
+                self.config_surface.blit(obs_text, (10, y_offset))
+                
+                for state_idx in range(3):
+                    x_pos = 120 + state_idx * 80
+                    value = A_matrix[0][obs_idx, state_idx]
+                    
+                    # Color code based on value
+                    if value > 0.6:
+                        color = self.GREEN
+                    elif value > 0.3:
+                        color = self.ORANGE
+                    else:
+                        color = self.RED
+                        
+                    value_text = self.small_font.render(f"{value:.2f}", True, color)
+                    self.config_surface.blit(value_text, (x_pos, y_offset))
+                
+                y_offset += 18
+            
+            y_offset += 10
+            
+            # Draw Smell Modality
+            smell_title = self.small_font.render("Smell Modality:", True, self.BLACK)
+            self.config_surface.blit(smell_title, (10, y_offset))
+            y_offset += 20
+            
+            # Headers for smell modality
+            for i, state_label in enumerate(state_labels):
+                x_pos = 120 + i * 80
+                header = self.small_font.render(state_label, True, self.BLACK)
+                self.config_surface.blit(header, (x_pos, y_offset))
+            y_offset += 20
+            
+            # Smell observations
+            smell_obs_labels = ["Smell Present", "Smell Absent"]
+            for obs_idx, obs_label in enumerate(smell_obs_labels):
+                obs_text = self.small_font.render(obs_label, True, self.BLACK)
+                self.config_surface.blit(obs_text, (10, y_offset))
+                
+                for state_idx in range(3):
+                    x_pos = 120 + state_idx * 80
+                    value = A_matrix[1][obs_idx, state_idx]
+                    
+                    # Color code based on value
+                    if value > 0.6:
+                        color = self.GREEN
+                    elif value > 0.3:
+                        color = self.ORANGE
+                    else:
+                        color = self.RED
+                        
+                    value_text = self.small_font.render(f"{value:.2f}", True, color)
+                    self.config_surface.blit(value_text, (x_pos, y_offset))
+                
+                y_offset += 18
+                
+        else:
+            # Old format: joint observations (fallback)
+            title = self.font.render("A Matrix (Joint Observations)", True, self.BLACK)
+            self.config_surface.blit(title, (10, y_offset))
+            y_offset += 40
+            
+            obs_labels = ["Smell+Noci", "NoSmell+Noci", "Smell+NoNoci", "NoSmell+NoNoci"]
+            state_labels = ["Safe", "Harmful"]
+            
+            # Draw headers
+            for i, state_label in enumerate(state_labels):
+                x_pos = 120 + i * 120
+                header = self.small_font.render(state_label, True, self.BLACK)
+                self.config_surface.blit(header, (x_pos, y_offset))
+            y_offset += 25
+            
+            # Draw values
+            for obs_idx, obs_label in enumerate(obs_labels):
+                obs_text = self.small_font.render(obs_label, True, self.BLACK)
+                self.config_surface.blit(obs_text, (10, y_offset))
+                
+                for state_idx in range(min(2, A_matrix.shape[1])):
+                    x_pos = 120 + state_idx * 120
+                    value = A_matrix[obs_idx, state_idx]
+                    
+                    if value > 0.6:
+                        color = self.GREEN
+                    elif value > 0.3:
+                        color = self.ORANGE
+                    else:
+                        color = self.RED
+                        
+                    value_text = self.small_font.render(f"{value:.3f}", True, color)
+                    self.config_surface.blit(value_text, (x_pos, y_offset))
+                
+                y_offset += 20
         
         return y_offset + 20
     
@@ -431,7 +504,12 @@ def run_visual_simulation(config: SimulationConfig, A_matrix=None, num_steps: in
             phys_state, qs, action = sim.step()
             history.append((phys_state, qs, action))
             # Pass the current A matrix to the visualizer
-            current_A_matrix = sim.agent.agent.A[0] if hasattr(sim.agent, 'agent') else (A_matrix[0] if A_matrix else sim.agent.A_array[0])
+            if hasattr(sim.agent, 'agent'):
+                current_A_matrix = sim.agent.agent.A
+            elif hasattr(sim.agent, 'A_array'):
+                current_A_matrix = sim.agent.A_array
+            else:
+                current_A_matrix = A_matrix
             running = vis.draw_frame(phys_state, qs, action, current_A_matrix)
             step += 1
     finally:
