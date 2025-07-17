@@ -606,7 +606,7 @@ class WormVisualizer:
         # Draw analysis panels on the right
         if A_matrix is not None:
             y_offset = self.draw_a_matrix_panel(A_matrix)
-            y_offset = self.draw_preferences_panel(sim.agent, y_offset)
+            y_offset = self.draw_preferences_panel(agent, y_offset)
             self.draw_observation_counts_panel(y_offset)
 
         # Update display
